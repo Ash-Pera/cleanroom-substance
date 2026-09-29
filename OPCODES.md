@@ -1,11 +1,12 @@
 # `.sbsasm` opcode catalogue
 
-**41 operations in 63 type-specific forms, all named.** Measured over 382 distinct
-specimens (the corpus holds 579 `.sbsasm` files, ~34% duplicate content) and 11,845,287
-instructions decoded by walking records to their bytecode. On distinct specimens, 96.5% of
-instructions carry an operation id catalogued for their type, and **of the 82 opcodes that
-appear in 20 or more distinct specimens, none has an uncatalogued operation id**. The
-residual is component-count and length variants of named operations plus decode residue.
+**41 operations in 63 type-specific forms, all named.** Measured over a 382-specimen
+distinct snapshot of the corpus (which now holds 651 `.sbsasm` files, 437 distinct by
+content) and 11,845,287 instructions decoded by walking records to their bytecode. On
+distinct specimens, 96.5% of instructions carry an operation id catalogued for their type,
+and **of the 82 opcodes that appear in 20 or more distinct specimens, none has an
+uncatalogued operation id**. The residual is component-count and length variants of named
+operations plus decode residue.
 
 Seven further operations — `0x03`, `0x0B`, `0x0F`, `0x1E`, `0x2A`, `0x35`, `0x36` — fall
 below that threshold and are established structurally rather than by frequency. They are in
@@ -41,9 +42,12 @@ exactly rather than guessed past. Records (`0x8000`+) are exempt; they are 4-ali
 framed by the record directory, not part of the instruction stream.
 
 **Three-address code.** One result per instruction, contiguous SSA value numbering; each
-operand names an earlier result in the same program. Some operands are immediates: the
-swizzle mask (`0x10`), variable-slot indices (`0x07`/`0x04`/`0x01`), the index read by
-`0x03`/`0x06`, and the 4-byte immediate of a constant (`0x00`) or input reference (`0x02`).
+operand names an earlier result in the same program. Some operands are immediates
+(`disasm.IMM`): every operand token of a constant (`0x00`, the 4-byte value), system
+variable (`0x01`, its id), input reference (`0x02`, the 4-byte uid), cache read (`0x03`,
+the index) and get (`0x04`, the slot); position 1 of `set` (`0x07`, the slot), swizzle
+(`0x10`, the mask) and cache write (`0x06`, the index); and positions 1–6 of the samplers
+`0x33`/`0x34` (1 the sampler index, 2+ flags whose meaning is unread).
 
 **Padding.** Opcodes carrying a 4-byte immediate come in two forms differing by `0x0400`,
 one extra token — a 2-byte pad emitted when the instruction lands at 0 mod 4 so the
@@ -77,12 +81,12 @@ length rule is wrong: the rule admits any word in `0x0400–0x7FFF`, so roughly 
 random data decodes as a plausible opcode. Over the same region, a flat scan reports
 19.2M "instructions" and 24,776 distinct opcodes against a record-walk's 8.1M and 5,653.
 
-Five opcodes once catalogued as unnamed operations — `0448`, `0A48`, `0A3D`, `1EB8`,
+Five opcodes a linear scan reports as unnamed operations — `0448`, `0A48`, `0A3D`, `1EB8`,
 `0B19` — are **not instructions**. They are 16-bit halves of tags in the 8-byte array
 structure, which a linear scan cuts across. Under a record-walk decode none of them ever
 appears on an instruction boundary (0 of 12,869 occurrences); `0B19` is a record class
-word (8,897 of its 8,931 hits are not in code at all). They are removed from the
-catalogue: operation ids `0x08`, `0x19`, `0x38`, `0x3D` are not real operations.
+word (8,897 of its 8,931 hits are not in code at all). They are not in the catalogue:
+operation ids `0x08`, `0x19`, `0x38`, `0x3D` are not real operations (`isa.ABSENT_IDS`).
 
 ---
 
@@ -241,6 +245,11 @@ that re-check against the 179/17 in its row.
 `085E` sits in the width-2 column with the other bool comparisons, which is what its bits
 6–7 declare; those bits are inert for booleans, so the width carries no meaning there.
 
+`0x06`, the write half of `0x03`'s cache (`cache_write` in `disasm.py`), also occurs —
+1,063 writes, every one hosted in a `pixelprocessor` record that nothing samples — and has no
+row here. Operand 0 is the value, operand 1 the index. See FORMAT-NOTES.md, "`0x03`/`0x06`
+are cross-record common-subexpression elimination".
+
 ---
 
 ## Notable operations
@@ -257,8 +266,10 @@ operands name *expression trees* re-evaluated per iteration, so a decoder emitti
 instructions in linear order is wrong here — the one place straight-line translation fails.
 The runtime batches all samples, so a correct implementation carries a per-lane `active`
 mask and freezes a lane's writes and result (`select(active, new, old)`) once its condition
-holds. Six forms: `194B`, `150B`, `190B`, `184B` (returns bool2), `15CB`, and `1A0B`
-(returns int1 — one instance, in `TatamiSubstance001`, identified structurally rather than
+holds. There are two encodings, a 6-operand form and a 5-operand form; in the 5-operand form
+operand 1 may be `0xFFFF`, the format's absent-operand sentinel (164 instances), and what
+bounds such a condition-less loop is not established — `transpile.py` refuses it. Six
+forms: `194B`, `150B`, `190B`, `184B` (returns bool2), `15CB`, and `1A0B` (returns int1 — one instance, in `TatamiSubstance001`, identified structurally rather than
 by frequency: its operands are `seq` init, a **bool** `lt` condition, and a `set` body, the
 exact signature the five commoner forms share).
 

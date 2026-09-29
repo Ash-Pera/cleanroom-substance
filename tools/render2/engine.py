@@ -299,10 +299,9 @@ def outputsize_uids(asm):
         for uid, entry in (manifest.alter_outputs(asm) or {}).items()
         if len(entry) > 1 and entry[1] == "$outputsize"
     )
-    # BEHIND `graph.outputsize`, because the 42 guard floors on these two packs were all
-    # taken with only the first uid set and the ratchet may not lower a floor. `first` is
-    # that reading and the default -- on a single-graph file the two arms are the same
-    # tuple, so every pack but Bricks and Auras is inert under both by construction.
+    # BEHIND `graph.outputsize`. `pergraph` (every uid) is the default since the 7658f42
+    # re-take; `first` is the reading before, kept as an arm. On a single-graph file the two
+    # arms are the same tuple, so every pack but Bricks and Auras is inert under both.
     if len(found) > 1 and assume.assumed("graph.outputsize", "pergraph") == "first":
         assume.note(-1)
         return found[:1]

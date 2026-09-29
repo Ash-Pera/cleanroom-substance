@@ -3,8 +3,9 @@
 A concise, self-contained description of Adobe Substance's compiled material format, as
 reconstructed by clean-room analysis. It is written to be *sufficient to build a reader*:
 every structure below can be located by pointer arithmetic from the file itself, with no
-fitted tables and no per-file heuristics. Numbers quoted as agreement rates are corpus
-measurements over 383 distinct specimens.
+fitted tables and no per-file heuristics. Counts quoted as support are measurements over the
+437-file content-deduplicated corpus (`tools/corpus.py`) unless a narrower population is
+named; the measurements themselves are in FORMAT-NOTES.md under the headings cited.
 
 Conventions: little-endian throughout; all sizes in bytes unless stated in *words*
 (1 word = 4 bytes); a **pointer** in this format is stored as `target − 52` (the "+52
@@ -25,7 +26,7 @@ assemblies/content/0000/thumbnail.png    icon
 The **manifest** is plain XML (`formatversion="2.1"`) and is the layer existing tools read;
 it carries parameter declarations but *no graph topology*. The **`.sbsasm`** carries the
 compiled graph: a directory of records (filter nodes), a stream of bytecode programs
-(computed parameters), a value table (baked parameters), and an interface block (the
+(computed parameters), a value table (graph-input defaults), and an interface block (the
 package's inputs and outputs). This spec is about the `.sbsasm`.
 
 ---
@@ -42,7 +43,7 @@ Fixed 0x38-byte header, identical field layout in every specimen.
 | 0x10 | 4 | total file size (exact) |
 | 0x14 | 4 | `0x1C` (const) |
 | 0x18 | 4 | `0` (const) |
-| 0x1C | 4 | pointer to trailer = `filesize − 28` |
+| 0x1C | 4 | `filesize − 28`, a plain absolute offset (**not** `+52`-skewed): the last input descriptor's tail plus the footer (§4) |
 | 0x20 | 4 | `0x00010002` (const) |
 | 0x24 | 4 | `0` (const) |
 | 0x28 | 4 | `1` (const) |
@@ -52,8 +53,9 @@ Fixed 0x38-byte header, identical field layout in every specimen.
 | 0x38 | — | body begins |
 
 **Version (0x04)** takes the values `0x0002_0000 … 0x0009_0000` and identifies *which
-cooker published the file*, not a release date. It matters because it changes one encoding
-rule (image-input slot width, §7.2). It is independent of the manifest's `formatversion`.
+cooker published the file*, not a release date. It changes two encoding rules: the
+image-input slot width in the graph-input table (from v8, §7.2) and whether a `warp` record
+carries a `w1` word (from v9, §6.2). It is independent of the manifest's `formatversion`.
 
 ---
 
@@ -65,33 +67,35 @@ rule (image-input slot width, §7.2). It is independent of the manifest's `forma
 base + 0x38     record directory            ]
                 records (code region)       ]
                 value table                 ]
-                interface block             ]
-filesize − 28   trailer (root pointers)
+                interface block             ]   (ends with the input descriptors, §11)
+filesize − 16   footer (root pointers, §4)
 ```
 
 `base` is the size of the resource segment. **`base == 0`** for packages that embed no
 images (the directory then starts at 0x38); otherwise the segment displaces the directory.
-A reader must not assume the directory is at 0x38 — it is located from the trailer.
+A reader must not assume the directory is at 0x38 — it is located from the footer.
 
 ---
 
-## 4. Trailer — the root pointer block (last 28 bytes)
+## 4. Footer — the root pointers (last 16 bytes)
 
-Seven words at `filesize − 28`. A reader needs only the magic from the header; everything
+Four words at `filesize − 16`. A reader needs only the magic from the header; everything
 else is reachable from here.
 
-| word | meaning | agreement |
-|---|---|---|
-| 0 | per-file identifier | — |
-| 1 | small enum (0–5, 8) | unexplained |
-| 2 | per-file identifier | — |
-| 3 | pointer (into directory or body) | 99% valid `+52` |
-| 4 | **record-directory start**, as pointer | 100% |
-| 5 | **record-directory end**, as pointer | 100% |
-| 6 | **value-table start**, as pointer | 100% |
+| word | meaning |
+|---|---|
+| 0 | **record count** `= (word2 − word1) / 4` |
+| 1 | **record-directory start**, as pointer |
+| 2 | **record-directory end**, as pointer |
+| 3 | **value-table start**, as pointer |
 
-So `dir_at = word4 + 52`, `count = (word5 − word4) / 4`, `table_start = word6 + 52`, and
-`base = word4 + 52 − 0x38`.
+So `dir_at = word1 + 52`, `count = word0`, `table_start = word3 + 52`, and
+`base = word1 + 52 − 0x38`; the relation holds exactly on 437 of 437 corpus files. The 12
+bytes before the footer are **not** footer fields: they are the tail of the interface block's
+input-descriptor array (§11) — the last input's `(type, uid)` and, when there are two or more
+inputs, the previous input's uid (437 of 437 and 411 of 411). A reader that treats the last
+28 bytes as a seven-word trailer finds two "identifiers" and an "unexplained small enum",
+which are those uids and that type (FORMAT-NOTES.md, "The 16-byte trailer, fully decoded").
 
 ---
 
@@ -99,7 +103,7 @@ So `dir_at = word4 + 52`, `count = (word5 − word4) / 4`, `table_start = word6 
 
 A contiguous array of `count` u32 **absolute file offsets**, strictly increasing, each
 pointing at one record. Validated over the full length in every specimen. Sizes range
-2 – 39,627 entries (median 1225). A record's extent is `[offset[i], offset[i+1])`; the
+1 – 39,627 entries (median 1,016). A record's extent is `[offset[i], offset[i+1])`; the
 last runs to the value table. **Record length is not stored** — it is framed only by the
 directory, which is why a correct reader must always walk records from the directory and
 never scan the body linearly.
@@ -114,111 +118,57 @@ it recurs at three scales (record header, FX-Map node §8, baked value width).
 
 ### 6.1 The primitive
 
-A structured object is `[mask][fields…]`. The set bits of the mask, read in ascending
-order, enumerate which fields are present; **each field's width is a constant of its
-kind**. Nothing stores an offset — a reader advances position by the width of each present
-field; a writer emits in the same order.
+A structured object is `[mask][fields…]`. The set bits of the mask, read in a fixed order,
+enumerate which fields are present; **each field's width is a constant of its kind**.
+Nothing stores an offset — a reader advances position by the width of each present field;
+a writer emits in the same order.
 
-**Ascending order has two known exceptions, and both are stated here rather than only at
-§13.4, because a reader who takes ascending order as universal places fields wrongly and gets
-plausible numbers rather than a failure.**
+**Record header order.** Each part is present only as the masks and the width legend
+(§7.3) say:
 
-1. **Filter 17 `text`'s `w1` parameter block** is laid `matrix22`, `position`, `fontsize`
-   (§13.4) — bits 10, 6, 8. This applies to the parameter block alone.
-2. **The class block emits bit 16 LAST within the low class group (bits 16–23), in EVERY
+1. `w0` (tag + class word, §6.2), then `w1` if the filter's shape carries one (§6.2).
+2. `fxmaps` only: its FX tree/table root pointer (slot 2, §8).
+3. The image inputs, contiguous: the filter's base arity, or for the two arity filters the
+   count stated in `w1` (§6.4); then `distance`'s optional mask edge (§6.3).
+4. The filter's other fixed prefix: `gradient`'s and `curve`'s ramp pair, `bitmap`'s pixel
+   word, `text`'s zero + string + font, `vectorshape`'s payload pointer.
+5. The class block, in the emission order below; then `bitmap`'s conjunction word (§6.4).
+6. `pixelprocessor` only: its own pixel program.
+7. `transformation` only: the pointer that integer code 30 emits (§7.4).
+8. The `w1` parameter fields, in ascending bit offset (§7.4) — except `text`, below.
+
+**Ascending order has two exceptions.** A reader that takes ascending order as universal
+places fields wrongly and gets plausible numbers rather than a failure.
+
+1. **Filter 17 `text`'s `w1` parameter block** is laid `matrix22`, `position`, `fontsize` —
+   bits 10, 6, 8 (§13.4). This applies to the parameter block alone (FORMAT-NOTES.md, "The
+   parameters, and the one place the walk's general rule does not hold").
+2. **The class block emits bit 16 LAST within the low class group (bits below 24), in EVERY
    filter; the filter's own bits 24–31 follow in ascending order.** Class bit 16 gates
-   `$outputsize` and bit 23 gates `$randomseed` (§13.4), and when both are set the
+   `$outputsize` and bit 23 gates `$randomseed` (§6.2, §13.4), so when both are set the
    `$randomseed` pointer takes the first class slot and the size expression the second.
+   Class bit 22 — one word, set only on `Texture_Randomizer` records 0, 2 and 5 (`fxmaps`) —
+   also precedes bit 16, so a pairwise "23 before 16" swap is wrong on exactly those three.
+   Only this rule puts a two-component (size) program at bit 16's slot on all 214,298 records
+   where candidate orders differ (FORMAT-NOTES.md, "H3 survives in a STRONGER form"; "Three
+   arbiters, none of them the walk").
 
-   **This was stated here as the pair "23 before 16", and a pair is wrong on 3 records.**
-   Scored on the 214,298 corpus records where the candidate orders place bit 16's slot
-   differently at all, by whether that slot resolves a program returning a **two-component
-   integer** — which a size expression is and a seed is not:
+   No filter is exempt: `pixelprocessor`'s header is
+   `[w0][w1 arity][image inputs][bit 23][bit 16][its own pixel program]` (FORMAT-NOTES.md,
+   "Fix 1 — `pixelprocessor`'s class block"), and `vectorshape`'s bit-16 slot is slot 2, after
+   its payload pointer, where it resolves the record's own size on 127 of 127
+   (FORMAT-NOTES.md, "4. `vectorshape`").
 
-   | order | valid program | two-component |
-   |---|---|---|
-   | bit 16 last in the low group | 214,298 / 214,298 | **214,298** |
-   | swap 23 before 16 | 214,295 / 214,298 | 214,295 |
-   | plain ascending | 214,295 / 214,298 | 112,122 |
-   | bit 16 last overall / descending | 169,944 / 214,298 | 100,440 |
-
-   The three the pair misses are `Texture_Randomizer` records 0, 2 and 5 — the only corpus
-   records that set class bit **22**, which costs a word and is the only costing class bit
-   strictly between 16 and 23. They set 16 and 22 and **not** 23, so a pairwise swap never
-   fires. Under the sort rule their bit-16 slot resolves a two-component program whose first
-   `inputref` names the uid the manifest declares `identifier="$outputsize" type="8"` on 3
-   of 3, and their bit-22 slot holds the constant `0x203`; walked ascending the two are
-   exchanged.
-
-   **What this corpus cannot separate.** "Bit 16 last in the low group" and "the system
-   variables are emitted first, then the filter's own bits" predict the identical order on
-   every record here: bits 17–21 cost no word in any filter, so 22 and 23 are the only other
-   observable members of the low group. The specimen that would separate them is a record
-   setting a **costing** class bit in 17–21 together with bit 16, and there is none. The rule
-   above is the one stated because it predicts; a list of pairs only records.
-   Measured over **all 102,173 corpus records that set both**, across 19 filters, and taken
-   by slot POSITION rather than by any reader's labels: the first class slot's program
-   returns **one** component in 102,173 of 102,173 — a size never can — and the second
-   returns **two** in 102,173 of 102,173. An independent arbiter agrees without evaluating
-   anything: the manifest identifier of the graph input each slot's program reads with its
-   first `inputref` is `$randomseed` in the first slot on **102,173 of 102,173** and
-   `$outputsize` in the second on 98,113, the remainder either not opening with a bare
-   `inputref` (3,902) or naming the material author's own size input (158 records over seven
-   identifiers — `resolution` 136, `scale` 12, `cloud_size` 4 — which is the same fact in
-   that author's vocabulary).
-   Over the 46,118 of those records outside `pixelprocessor`, where it was first measured,
-   the second slot's two components equal the record's own tag size in 46,023 of the 46,075
-   that evaluate (99.89%).
-
-   The control is records with bit 16 set and bit 23 clear, where nothing can swap and the
-   single class slot must be the size: it resolves a two-component program in **639,944 of
-   640,074** corpus-wide, a one-component program in **0**, and `$randomseed` in **0**. The
-   130 that did not were `vectorshape` (127) and three `fxmaps` records in
-   `Texture_Randomizer`. `levels` alone is 74,262 of 74,262.
-
-   **The 127 were "no cost model and no placed slot", and both halves are gone.** Filter 5
-   is in the width legend (§7.3) — base 0, one fixed slot for the payload pointer, class
-   bits 16 and 25 at one word each, exact on 139 of 139 records — so its class block is
-   walked like anyone else's and bit 16's slot lands at position 2. Measured there: a
-   program resolves on **127 of 127**, against **0 of 127** at slot 1 and **0 of 127** at
-   slot 3; all 127 evaluate to a **two-component** value; and those two components equal
-   the record's own tag size on **127 of 127**. So the row above reads 640,071 of 640,074
-   and the remaining 3 are the `fxmaps` records. What the walk no longer does anywhere is
-   decline to place a class slot: 5 records in the corpus have none, all filter 9.
-
-   **`pixelprocessor` was listed here as the exception and is not one.** Its header is
-   `[w0][w1 arity][image inputs][bit 23][bit 16][the filter's own pixel program]`, and the
-   same manifest arbiter names the first class slot `$randomseed` on 57,731 of 57,731
-   records that set bit 23 and the second `$outputsize` on 56,141 of 56,142 that set bit 16,
-   with the block ending exactly one slot before the fitted header length on 57,965 of
-   57,965. What made it look exceptional is that `decompose`'s arity arm allocated the pixel
-   program's slot in FRONT of the class block, so both class labels sat one word late. **That
-   is fixed and there is no exception left**: the arity arm walks the class block from
-   `2 + n_in` in the same emission order every other filter uses, and puts the filter's own
-   program after it. The A/B over 903,616 records moved `prog` on 57,011 `pixelprocessor`
-   records and `size_slot` on 87, and moved `end`, `inputs`, `hdr` and `param_slots` on
-   **none** — a relabel, not a misplacement. The arbiter, taken by slot POSITION rather than
-   by the walk's labels: the last header slot reads `$pos` (sysvar 8) on 55,678 records and
-   calls `samplelum`/`samplecol` on 55,179, against 105 and 115 for the slot the walk used to
-   call the pixel program — which instead opens with a bare `inputref` on 57,818 and is 0–9
-   instructions long on 57,833. See FORMAT-NOTES.md, "Every filter, bit by bit", and the A/B
-   appended after it.
-   The claim that `pixelprocessor` is "the only filter that sets class bit 22" was a bit
-   number read one place low: it sets bit 22 on 0 records and bit 23 on 99.60% of them, and
-   the only records in the corpus setting class bit 22 are three `fxmaps` records in
-   `Texture_Randomizer`.
+   *Open:* "bit 16 last in the low group" and "system variables first, then the filter's own
+   bits" predict the identical order on every corpus record, because bits 17–21 cost no word
+   in any filter; a record setting a costing class bit in 17–21 with bit 16 would separate
+   them, and the corpus has none.
 
 A reader that walks the class block in plain ascending order still gets the header LENGTH
-right — both bits cost one word — so nothing runs past the end and no parameter moves. What it
-gets wrong is which of the two slots is the size, and the error is silent: the misread slot
-holds a one-component program, and a reader that requires two components to call something a
-size discards it as unevaluable rather than reporting a disagreement.
-
-That silence is measured rather than argued. This project's own decoder walked the block
-ascending in one of its four code paths for two commits after stating the rule here, and the
-A/B that fixed it moved `size_slot` on 4,280 records while moving the header end, the edge
-list, the mask-word count and every parameter slot on **none**. Nothing about the record's
-shape reports the error; only the name on one word changes.
+right — both bits cost one word — so nothing overruns and no parameter moves. What it
+gets wrong is which slot is the size, and silently: the misread slot holds a one-component program,
+which a reader requiring two components discards instead of reporting (FORMAT-NOTES.md, "The
+fourth class-block walk, and one loop instead of four").
 
 ### 6.2 The two header words
 
@@ -231,54 +181,73 @@ word0:  low16  = bit 0     colour flag (0 grayscale, 1 colour)
 word1:          two-bit code per field — the filter's OWN parameters
 ```
 
-The low half is worth spelling out because it is **not** a presence mask and a reader must
-not treat it as one: two of its nibbles are a size. A fitted cost table that offers every bit
-of word0 as a feature will happily charge header words to them, and §13.4 records what that
-cost. §7.3's width legend has no cell on any bit below 16, because a width comes from a type
-and not from a regression.
+The low half is **not** a presence mask and a reader must not treat it as one: two of its
+nibbles are a size. The width legend (§7.3) has no cell on any bit below 16; a fitted cost
+table that offers word0's low bits as features charges header words to the canvas (§13.4).
 
-- **Class word (word0 high half):** the set bits are read in ascending bit order, and each
-  one that gates a stored value adds a field. Widths come from the manifest type of the
-  parameter that bit gates (§7.2): bit 10 is `$outputsize` (integer2 → 2 words); the other
-  common inherited parameters are 1 word each. **A set bit can cost nothing**, and a reader
-  that gives every set bit a slot runs its block past the end of the header — see §13.4,
-  where a fitted table charged four bits that store no value.
+- **Class word (word0 high half).** Class bits are numbered by their **word0** bit position,
+  16–31 ("class bit 16" is the class word's lowest bit). Each set bit that gates a stored
+  value adds a field whose width is that (filter, bit)'s legend cell (§7.3), walked in the
+  §6.1 emission order. Two bits are universal: **16 = `$outputsize`**, one word, a pointer to
+  the size-expression program (which returns an int2); **23 = `$randomseed`**, one word, a
+  pointer. Bits 24–31 are a per-filter parameter list keyed on (filter, bit), usually as an
+  adjacent baked/program pair — e.g. bits 26/27 are `$pixelsize` in `warp`, `blur`,
+  `dirmotionblur`, `directionalwarp`, `distance`, `normal` and `sharpen`: 26 a baked float2
+  (2 words), 27 a program pointer (1 word), never both set (§13.4; FORMAT-NOTES.md, "Class bits
+  26 and 27 are `$pixelsize`"). **A set bit can cost nothing** (bits 19–21 never cost a word),
+  and a reader that gives every set bit a slot runs its block past the end of the header
+  (§13.4).
+- **Whether a record has `w1`** is a per-filter rule (`legend.json` `has_w1`):
+  *always* — `blend`, `transformation`, `fxmaps`, `emboss`, `dirmotionblur`,
+  `directionalwarp`, `levels`, `text`, `normal`, `pixelprocessor`, `distance`;
+  *never* — `gradient`, `vectorshape`, `uniform`, `blur`, `sharpen`, `hsl`, `bitmap`,
+  `dyngradient`, `curve`; `shuffle` — iff tag bit 0 is set; `warp` — iff the assembly version
+  is ≥ `0x0009_0000` (without the version, refuse). A reader that charges a mask word to a
+  record that has none comes out one word long, silently (FORMAT-NOTES.md, "Draining the memo:
+  the rest of `layouts.json`").
 - **Word1 two-bit codes:** each of the filter's own parameters is a 2-bit field:
 
   | code | meaning | cost |
   |---|---|---|
   | `00` | absent | 0 words |
-  | `01` | baked (value stored inline / in the value table) | width of the field's kind |
+  | `01` | baked (value stored inline in the record header) | width of the field's kind |
   | `10` | program (a bytecode pointer) | 1 word |
-  | `11` | image input (an **edge**) | 1 slot |
+  | `11` | image input (an **edge**) — for a field declared as an input | 1 slot |
 
-**Field kinds and widths** (words): scalar `Float1` = 1; `Float2` = 2; `Float4` = 4;
-*per-channel* fields are `Float1` when grayscale and `Float4` when colour, selected by
-word0 bit 0. These are the only widths in use — "4 is the widest scalar the format has".
+  Whether a `11` field is an edge is a fact of (filter, bit offset), decided from the header
+  and never from the slot's value: `blend`'s bit-4 field is an input; `emboss`'s and
+  `directionalwarp`'s bit-3 fields in state `11` hold a one-word parameter, not an edge
+  (`decompose.INPUT_FIELDS`; FORMAT-NOTES.md, "The walk is fixed: image inputs are now read
+  from the header alone").
+
+**Field kinds and widths** (words): `0` = 0; scalar `Float1` = 1; `Float2` = 2;
+`Float4` = 4; *per-channel* `C` fields are 1 when grayscale and 4 when colour, selected by
+word0 bit 0. No other width occurs — "4 is the widest scalar the format has".
 
 ### 6.3 Edges (graph connectivity)
 
-An **edge slot** holds a **backward record index** (the index of the record that feeds
-this input), or the sentinel `0xFFFFFFFF` / `0` for absent. Edges come from three places,
-in this order: a filter's fixed *base* image inputs (contiguous from slot 2), any word1
-field with code `11`, and — for a few filters — an *arity integer* (§6.4). Because edges
-are backward indices, a walk can be checked loudly: any slot the walk calls an edge must
-hold a value `< own index`, or the walk is wrong.
+An **edge slot** holds a **backward record index**, 0-based (the index of the record that
+feeds this input; `0` is record 0), or the sentinel `0xFFFFFFFF` for an absent input
+(FORMAT-NOTES.md, "Edge value 0 is record 0, not 'no input'"). Edges come from: the filter's
+base image inputs or its `w1` arity count (contiguous from slot `n_hdr`, after `fxmaps`' root
+pointer — §6.1), `distance`'s low-bit mask edge (below), and `w1` fields in state `11` that
+are declared inputs (§6.2), at their place in the parameter block. Because edges are backward
+indices, a walk can be checked loudly: any slot the walk calls an edge must hold a value
+`< own index` or the sentinel, or the walk is wrong.
 
 **One `w1` field declares an edge on its LOW BIT, not on the full code `11`.** `distance`'s
-field 0 is the case: it charges a word in states `01` and `11` and nothing in `10`, which is
-a cost tracking bit 0 alone rather than baked-versus-program, and no parameter costs that way.
-Over the corpus's five `distance` `w1` values, bit 0 set (5, 7, 9) gives two edges and clear
-(6, 10) gives one, **2,277 of 2,277**. Such a field is *not* part of the end-anchored
-parameter block (§13.4) and must not be charged a word in it — doing so begins the block one
-slot late and silently renames every parameter after it.
+field 0 charges a word in states `01` and `11` and nothing in `10` — a cost tracking bit 0
+alone, which no parameter does: bit 0 set gives two edges and clear gives one, 2,277 of 2,277.
+It is placed with the image inputs, is *not* part of the end-anchored parameter block
+(§13.4), and must not be charged a word in it — doing so begins the block one slot late and
+silently renames every parameter after it (FORMAT-NOTES.md, "The other half of `distance`").
 
 **The same loud check applies to programs.** A slot the walk calls a program must hold a
-decodable program at `value + 52`, exactly as an edge slot must hold a backward index. This
-is worth asserting rather than assuming: reading a baked `5.120025` as the address
-`0x40a3d70a + 52` is what the mis-charged field above produced, and it is invisible without
-the check — a wrong radius renders, a wrong address does not, and only one of them announces
-itself. On one specimen the unchecked read blocked 1,581 further records.
+decodable program at `value + 52`, exactly as an edge slot must hold a backward index.
+Assert it rather than assume it: a mis-charged field reads a baked `5.120025` as the address
+`0x40a3d70a + 52`, a wrong value renders while a wrong address does not, and only the check
+makes the error announce itself (FORMAT-NOTES.md, "A baked radius read as an address";
+"The two loud checks, and the arbiter that is not the walk").
 
 ### 6.4 The layout alphabets
 
@@ -286,73 +255,48 @@ The file states each filter's layout in one of three self-describing ways; a rea
 handles all three with the one primitive and needs no fitted table:
 
 1. **Two-bit presence codes** — word1 as above (blend, levels, transformation, warps).
-   A field begins at **its own bit** (§7.3); there is no grid and no per-filter shift.
+   A field begins at **its own bit** (§7.4); there is no grid and no per-filter shift.
 2. **Arity integer** — the header states an input *count* as a small integer in word1 and
-   the walk reads that many edge slots (pixelprocessor, five bits at 0; fxmaps, six bits
+   the walk reads that many edge slots (`pixelprocessor`, five bits at 0; `fxmaps`, six bits
    at 10, after its tree-root pointer).
 3. **Paired conjunction** — two class-word bits that, set *together*, name one field
-   (bitmap's bits 24+27 = the pixel-offset word).
+   (`bitmap`'s bits 24+27 = the pixel-offset word).
 
-**There was a fourth, and it was a count standing in for a per-bit fact.** It read: the
-number of *leading* block slots that are programs is `popcount(class_word & mask)`, the
-rest baked, filled positionally from the front of the block (blur, warp). What the corpus
-says instead is that **each class bit is a pointer or a value and always the same one.**
-Scored against what the slot holds — `valid_program(word + 52)`, never against any reader's
-labels — every class bit of both filters is all-or-nothing:
+**Each class bit is always a pointer or always a value**, per (filter, bit); it is not a
+positional count of "leading program slots". `blur`'s pointer bits are {16, 23, 27, 29} and
+its value bits {26, 28}; `warp`'s are {16, 23, 27, 30} and {26, 29}. `warp` emits value bit
+29 before pointer bit 30, which no count can express (`sbsasm.CLS_PROGRAM_BITS`;
+FORMAT-NOTES.md, "SPEC 6.4's fourth alphabet: it is not a count"). Role is a name-legend
+fact (§13.4), not a layout one: the header length comes from the widths alone (§7.3). So a
+`blur` header with a baked `$pixelsize` (bit 26, two words) is one word longer than with a
+computed one (bit 27, one pointer).
 
-| filter | pointer bits | value bits |
-|---|---|---|
-| warp | 16 (26,559/26,559), 23 (269/269), 27 (19,388/19,388), 30 (1,109/1,109) | 26 (0/860), 29 (0/24,815) |
-| blur | 16 (9,981/9,981), 23 (51/51), 27 (8,675/8,675), 29 (303/303) | 26 (0/10,318), 28 (0/14,931) |
+**Two-shape filters** state their shape with a single term: `shuffle` by tag bit 0 (the
+colour flag) — `grayscaleconversion` (one input + a `channelsweights` vector, no `w1` word)
+versus Channel Shuffle (two inputs + a packed channel selector in `w1`); `warp` by version
+(§6.2); `distance` by `w1` bit 0 (§6.3) (FORMAT-NOTES.md, "The shuffle header reads 100%").
 
-The popcount mask is that pointer set **minus warp's bit 30**, and warp emits a value bit
-(29) *before* that pointer bit, which no positional count can express. On the same slots and
-the same ground truth, per-bit is exact on **26,791 of 26,791** warp records against the
-count's 25,682 (73,000 slots against 71,891) and identical on blur's **15,371 of 15,371**.
-Nothing that agreed stops agreeing.
-
-Role is not a layout alphabet at all, and that is why it leaves this list: both readings
-cost one word, so the header is the same length either way, and what changes is what the
-word *means*. That is a name-legend fact (§13.4), and it lives beside the other names —
-`sbsasm.CLS_PROGRAM_BITS`. The extent consequence the old rule carried is unaffected and
-still holds: when no pointer bit is set the size is two baked words `(w, h)` rather than one
-program pointer, so a blur header is five words with a baked size and four with a computed
-one.
-
-A walk mechanism reproduces record layout for **all but 5** of the corpus's 903,616
-records. Two-shape filters state which shape a record takes with a single stated term — e.g.
-`shuffle` uses tag bit 0 (the colour flag) to split its two authoring nodes,
-`grayscaleconversion` (one input + a `channelsweights` vector, no w1 word) and Channel
-Shuffle (two inputs + a packed channel selector in w1).
-
-**The residue was `vectorshape` and `emboss`'s older records, and neither is one now.**
-This section used to read 99.97% and say `vectorshape`'s "layout the file does not state in
-any readable term". It states it in the ordinary terms: base arity 0, one fixed slot holding
-the payload pointer, and a class block at slot 2 whose bit 16 is the record's own
-`$outputsize` (§6.1) and whose bit 25 is a baked float. What is behind the provenance wall
-(§12) is filter 5's NAME, not its shape — a distinction this sentence used to blur.
-`emboss`'s 171 pre-v5 records were refused by a `min_version` gate the width legend
-inherited from the fitted model, where a free intercept could not separate a class bit set
-on every key from the constant; with the intercept pinned they are exact, and they are the
-only records that exercise four of `emboss`'s cells. **The 5 that remain are filter 9**,
-which no permitted source names and which has no legend entry.
+The walk reproduces record layout for **all but 5** of the corpus's 903,616 records. The 5
+are filter 9, which no permitted source names and which has no legend entry; a reader refuses
+them. (The fitted model the legend replaced also declined `vectorshape`'s 139 records and
+`emboss`'s 171 pre-v5 records, 315 in all; both are ordinary legend entries — FORMAT-NOTES.md,
+"1. `emboss`: the version gate was the FIT's"; "4. `vectorshape`".) What is behind the
+provenance wall (§12) is filter 5's NAME, not its shape.
 
 ### 6.5 Which bits the corpus can actually separate
 
 A per-bit claim is normally argued by scoring a model with the bit against one without it.
 That argument is void when another bit is set on exactly the same masks: the two are one
-column, every score is identical, and the tie reads as a confirmation. Two relations matter,
-and they are not equally bad:
+column, every score is identical, and the tie reads as a confirmation. Two relations matter:
 
 - **identical** — set on exactly the same masks. Fatal; no measurement over that population
   can name one rather than the other.
-- **implies** — this bit's masks are a strict subset of the partner's. A real confound, since
-  every piece of evidence for the bit is also evidence for the partner, but *arguable*: the
-  partner's extra masks are the control.
+- **implies** — this bit's masks are a strict subset of the partner's. A real confound, but
+  *arguable*: the partner's extra masks are the control.
 
 `archive/tools/separability.py` reports both, and **no `identical` pair exists anywhere in
-the corpus** — so every bit named in this document is in principle still arguable. The subset
-confounds:
+the corpus**, so every bit named in this document is in principle arguable. The subset
+confounds (FORMAT-NOTES.md, 'The audit, and what "not separable" means'):
 
 | population | not separable | separable |
 |---|---|---|
@@ -362,10 +306,11 @@ confounds:
 | w1, filter 2 (215,444 records) | 4 (n=211,786) implies 2, 3; 28 (n=33) | 0–3, 5–7, 25, 26 |
 | w1, filter 15 (76,879 records) | — | all of 0–10 |
 
-**The population is part of the claim.** Bits 7 and 31 were once called co-extensive "4/4
-both ways" and a reading was retracted on it; they are co-extensive over `FX_ENTRY_PROGS`'
-57-tag key set and *not* over the corpus, where bit 31 is a strict subset of bit 7 and 474
-entries across 11 tags separate them. Enumerate from the corpus, and say so when narrowing.
+**The population is part of the claim.** Bits 7 and 31 of the FX entry tag are co-extensive
+over `FX_ENTRY_PROGS`' 57-tag key set but not over the corpus, where bit 31 is a strict subset
+of bit 7 and 474 entries across 11 tags separate them. Enumerate from the corpus, and say so
+when narrowing (FORMAT-NOTES.md, "First, a correction: the co-extensivity that started this
+was a SUBSET ARTIFACT").
 
 ---
 
@@ -373,33 +318,20 @@ entries across 11 tags separate them. Enumerate from the corpus, and say so when
 
 A filter's parameters are either **computed** (a bytecode program) or **baked** (a
 constant). Computed parameters are pointers into the instruction stream (§10). Baked
-parameters are stored **inline in the record header, one word per component** (§6.4) — not
-in the value table, which holds the graph input defaults only (§7.1).
+parameters are stored **inline in the record header, one word per component** (§7.3, §7.4) —
+not in the value table, which holds the graph input defaults only (§7.1).
 
 ### 7.1 Value table
 
-A single array named by trailer word 6 and bracketed by header 0x2C. It holds the **graph
-input defaults and nothing else** — 98% of its entries are byte-exact against manifest
-defaults, the rest within float-rounding, none unexplained. Values are addressed
-positionally by the widths of §7.2.
+A single array from `table_start = footer word 3 + 52` to `table_end = header 0x2C + 52`.
+It holds the **graph input defaults and nothing else**: the graph-input descriptors of §7.2
+consume its entire stated extent in 437 of 437 files. 98% of its entries are byte-exact
+against manifest defaults, the rest within float rounding, none unexplained. Values are
+addressed positionally by the widths of §7.2.
 
-An earlier version of this section said it "holds every baked scalar/vector value". That is
-false, and the error is large: measured over 437 specimens, the graph-input descriptors of
-§7.2 consume the table's **entire stated extent** — `table_start = trailer word 6 + 52` to
-`table_end = header 0x2C + 52` — in 437 of 437 files, with no room left over. Meanwhile the
-records carry **544,189 baked parameter slots** against the corpus's **8,500** descriptors,
-a ratio of 1 : 64.
-
-Those two populations are disjoint. **A record's baked parameters are stored inline in the
-record header, one word per component** (§6), and are never in the value table. A reader
-built on the old sentence would look for half a million values in an array that does not
-contain them.
-
-The 437/437 closure is stated deliberately in terms of the two header/trailer pointers.
-`standalone_parse` reports its own `table_ok` at 437/437 as well, and **that number is not
-evidence**: the parser selects the interface-block candidate that satisfies
-`tstart + span == hdr`, so its closure is a property of the chooser rather than of the
-format. The pointers above are ones the chooser never reads.
+A record's baked parameters are never here — the records carry 544,189 baked slots against
+the corpus's 8,500 descriptors (FORMAT-NOTES.md, "The value table holds graph-input defaults
+and nothing else"; "The interface block cannot be the legend: 1 : 64").
 
 ### 7.2 Graph-input default table
 
@@ -415,16 +347,16 @@ mask-walk reads rather than fits:
 | 5 | image input | **16 bytes from v8 on, 0 before** |
 | 6, 7 | string, font | 0 (stored elsewhere) |
 
-The image-input width is the one version-dependent rule in the format: from assembly
-version v8 (`0x0008_0000`) an image input occupies a 16-byte `f32×4` slot at its uid
-position; in v2–v6 it occupies none. Getting it wrong shifts the whole table by
-`16 × (image count)`.
+From assembly version v8 (`0x0008_0000`) an image input occupies a 16-byte `f32×4` slot at
+its uid position (its scalar default in component 0, zeros elsewhere); before v8 it occupies
+none. Getting it wrong shifts the whole table by `16 × (image count)`. Take the width from the
+version, not by trial: on 2–4-entry tables both widths can appear to validate
+(FORMAT-NOTES.md, "Graph-input default table — confirmed").
 
 ### 7.3 The width legend, and the key it is missing
 
-§7.2's `type -> 4N` table is the format's own width legend, stated in the file and read
-rather than fitted. **It is now the whole of the record-header model as well**, and the
-header length is one sum over it:
+§7.2's `type → 4N` table is the format's own width legend, and it is the whole of the
+record-header model as well. The header length is one sum over it (`record_layout.header_words`):
 
 ```
 header = n_hdr + n_base + n_fixed
@@ -433,53 +365,41 @@ header = n_hdr + n_base + n_fixed
              00 absent  -> 0        01 baked   -> width(kind)
              10 program -> 1        11 edge    -> 1
        + arity                (the two filters whose w1 holds an input count, §6.4)
+       + distance's mask edge (w1 bit 0, §6.3)
        + one conjunction      (bitmap 24+27, §6.4)
-       + one integer field    (`transformation`'s w1 bits 0-4 — §7.4's last paragraph:
-                               a 5-bit value, one of whose codes emits a program
-                               pointer, and whose unobserved range 14-28 is REFUSED)
+       + one integer field    (`transformation`'s w1 bits 0-4, §7.4: a 5-bit value, one of
+                               whose codes emits a program pointer, and whose unobserved
+                               range 14-28 is REFUSED)
 
 width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
-n_hdr = 1 + (this record carries a w1 word)
+n_hdr = 1 + (this record carries a w1 word, §6.2)
 ```
 
-`n_hdr` counts mask words, `n_base` is the filter's fixed image-input arity (§6.3) and
-`n_fixed` its fixed prefix — the ramp pair, the FX tree root, the bitmap pixel word,
-`text`'s zero + string + font, `pixelprocessor`'s own program. Every term is a structural
-count or a width from the type legend above. **There is no intercept, no float, no negative
-coefficient, no per-state cell and no grid shift**, and the whole table is 109 kinds over
-110 cells — 32 of them the bit a `w1` field begins at. A model with 688 fitted numeric cells
-across five spec shapes stood here before it, and the two answer the identical header length
-on 903,276 of 903,301 corpus records. **The 25 that differ are the
-one place the legend deliberately went past the fit** — `transformation`'s integer field
-(§7.4), where both models used to be one word short.
+`n_hdr` counts mask words; `n_base` is the filter's fixed image-input arity (§6.3), which for
+`shuffle` equals `n_hdr`; `n_fixed` is its fixed prefix — the ramp pair, the FX tree root, the
+bitmap pixel word, `text`'s zero + string + font, `vectorshape`'s payload pointer,
+`pixelprocessor`'s own program. Every term is a structural count or a width from the type
+legend. **There is no intercept, no float, no negative coefficient, no per-state cell and no
+grid shift.** The table (`tools/legend.json`) is 109 kinds over 110 cells: 76 class-bit cells,
+32 `w1` field offsets, `bitmap`'s conjunction and `shuffle`'s shape cell (FORMAT-NOTES.md,
+"The legend, in full"; "H4 survives").
 
-**They no longer share their refusals, and that is the second place the legend went past
-the fit.** 903,301 is the population the FIT can answer: it declines 315 records —
-`vectorshape`'s 139, `emboss`'s 171 below a `min_version` gate, and filter 9's 5. The
-legend declines **5**, filter 9's, and its answer on all 903,301 shared records is
-unchanged (§6.4). Three cells arrived with those 310 records: `emboss` class bit 26 at two
-words, `vectorshape` class bits 16 and 25 at one each — which is why the table is 110 cells
-and not 107 — and `emboss`'s `w1` bit 5 turned out to be per-channel `C` rather than
-`Float4`, because its grey arm is exercised only below the gate.
+**Refusals.** `header_words` answers `None` — never zero — for a filter with no legend entry
+(filter 9, 5 records), for a `w1` field in the baked state whose kind the corpus never
+exercised (`fxmaps` `w1` bit 8), and for `transformation`'s integer codes 14–28 (§7.4). A
+width nobody measured is not zero; a caller must refuse rather than lay slots against it.
 
-**A kind is a pair of widths and the corpus does not always give both.** Only two of the
-five share a width — `Float1` is `(1, 1)` and per-channel is `(1, 4)` — so a cell exercised
-in one colour only is a reading in that colour and a *prediction* in the other. **37 of the
-220 (cell, colour) pairs are in that state**: 19 because the filter has no record of the
-other colour at all (`text` is grey on all 59, `normal` and `hsl` colour on every one), 18
-because it has records and none set the cell — including `blur` / `sharpen` / `distance` /
-`curve` / `dyngradient` / `emboss` class bit 23 in colour, `emboss` and `sharpen` class bit
-26 in grey, `vectorshape` class bit 25 in colour and `fxmaps` class bit 22 in colour;
-`legend.json`'s `evidence` map is the full list.
-`emboss`'s `w1` bit 5 in grey WAS on that list and is not any more — dropping the version
-gate put the records that bake it into the solve, and its width there is 1, which makes the
-cell per-channel and not `Float4`. An implementation must mark those, not store them as zeros — the fitted table
-stored them as zeros and they were indistinguishable from measured ones.
+**A kind is a pair of widths and the corpus does not always give both.** `Float1` is
+`(1, 1)` and per-channel is `(1, 4)`, so a cell exercised in one colour only is a reading in
+that colour and a *prediction* in the other. **37 of the 220 (cell, colour) pairs are in that
+state**: 19 because the filter has no record of the other colour at all (`text` is grey on
+all 59, `normal` and `hsl` colour on every one), 18 because none of its records sets the cell
+(e.g. class bit 23 in colour for six filters). `legend.json`'s `evidence` map is the full list.
+An implementation must mark those as predictions, not store them as measured values.
 
-The legend reaches the parameter slots as well: over 437 specimens every one of the
-**544,189** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
-`float1`, `float2`, `float4` — and **none falls outside the legend's 1..4**. (Width 3,
-`float3`, is legal by the legend and does not occur.) Per filter:
+**Every baked parameter slot is 1, 2 or 4 words.** Over 437 specimens, none of the 544,189
+baked slots the walk reads falls outside the legend's 1..4, and width 3 (`float3`), though
+legal, does not occur (FORMAT-NOTES.md, "The legend is not the gap -- the KEY is"). Per filter:
 
 | filter | 1 word | 2 words | 4 words |
 |---|---|---|---|
@@ -492,97 +412,52 @@ The legend reaches the parameter slots as well: over 437 specimens every one of 
 | 18 `normal` | 988 | — | — |
 | 21 `distance` | 2,089 | — | — |
 
-**`emboss` has no row and now should have one**, and it is left out rather than filled in
-from a different instrument. Its 171 pre-v5 records joined the legend after this table was
-taken (§6.4), so it bakes `w1` fields 1, 3, 5 and 7 — widths 1, 1, `C` and `C`, i.e. 1 or 4
-words. The claim the table supports is unaffected: no width outside 1, 2, 4 appears, and
-`C` cannot produce one. Re-take the whole table with one instrument before quoting it.
+`emboss` has no row: its baked `w1` fields 1, 3, 5, 7 (widths 1, 1, `C`, `C`) were not in the
+population this table was taken over. Re-take the table with one instrument before quoting it.
 
-So the legend is not the gap. **What the file does not state is the per-field type CODE**,
-and that is the whole of what the table derives — a *kind assignment* per (filter, cell),
-not a width. Two searches for a per-node type declaration came back empty and are
-recorded so they are not repeated: the interface block declares 8,500 typed descriptors
-against half a million slots and is framed to the graph-input table alone (§7.1), and the record
-directory holds bare offsets. The filter id *is* the declaration, and the parameter list it
-names lives in the engine.
+**A width does not decide a ROLE.** `blur`'s class bits 27 and 29 are one word each and both
+are pointers; `warp`'s bit 29 is one word and a value while its bit 30 is one word and a
+pointer. A `1` in the legend means "one word", never "a pointer"; which one-word cells hold
+pointers is a name-legend fact (§6.4, §13.4).
 
-**A width does not decide a ROLE, and the two must not be conflated.** `blur`'s class bits
-27 and 29 are both one word and both are program pointers; its bits 26 and 28 are two words
-and one word and both are baked values — but `warp`'s bit 29 is one word and a value while
-its bit 30 is one word and a pointer. So a `1` in this table means "one word", never "a
-pointer". Which one-word cells hold pointers is a name-legend fact and is stated with the
-names (§6.4, §13.4).
-
-**Three rows moved when the cost model's attribution was corrected**, and the movement is
-the correction rather than new data: `distance`'s width-2 column was the phantom left by
-charging its mask input twice — the real field is one word wide and there is no width-2
-`distance` parameter at all — and `normal` gained 17 slots that the walk used to allocate
-past the end of their own records and then discard. `blend`'s row had gone stale earlier,
-when its relocated opacity arm was named. The claim the table supports is unaffected: no
-width outside 1, 2, 4 has ever appeared, and the corrected `distance` row removes the only
-row where a width came from a rounded 1.5 rather than from a type. Under the legend no
-width comes from a rounding at all: every cell is solved as an integer against a pinned
-base, and the two remaining halves the fit still carried — `emboss`'s w1 bit 1 at "0.5 grey
-/ 1.0 colour" and `sharpen`'s four canvas bits at ±0.5 — have no cell.
-
-One kind is already stated rather than assigned, which is the existence proof that the
-distinction is real: a `channel` field's component count is the **tag's colour bit** — 4
-words when colour, 1 when grayscale — so `walk._field_width` derives it and does not fit
-it. The open problem is the rest of the assignment, and its legitimate route is the
-permitted `.sbs` sources, which declare parameter names and types per filter.
+**What the file does not state is the per-field type CODE** — the *kind assignment* per
+(filter, cell) that the legend table supplies. No per-node type declaration exists: the
+interface block's typed descriptors cover the graph-input table only (§7.1) and the directory
+holds bare offsets. The filter id *is* the declaration; its parameter list lives in the
+engine. One kind is stated rather than assigned: a `channel` field's component count is the
+tag's colour bit — 4 words colour, 1 grayscale (`walk._field_width`). *Open:* the rest of
+the assignment; its legitimate route is the permitted `.sbs` sources, which declare parameter
+names and types per filter.
 
 ### 7.4 The field primitive — how `w1` gates and places a parameter
 
-One rule places every parameter this project reads, and it is the §6.1 mask-walk applied to
-the second header word.
+One rule places every parameter this project reads: the §6.1 mask-walk applied to the second
+header word.
 
 **`w1` is a set of two-bit FIELDS, and a field begins at ITS OWN BIT.** There is no grid.
 A filter declares an offset per field and the field occupies bits `(b, b + 1)` —
 `directionalwarp`'s are at 1, 3 and 7, `emboss`'s at 1, 3, 5 and 7, `blend`'s at 4, 6 and 9,
 `transformation`'s at 6, 25 and 28, `levels`' and `fxmaps`' at 0, 2, 4, 6 and 8, `text`'s at
-6, 8 and 10.
-
-**This section used to state an even grid `(2j, 2j + 1)` plus a per-filter SHIFT `s`, and
-both halves were the reader's, not the format's.** The shift existed because
-`directionalwarp` and `emboss` begin at bit 1, and a straddle table in `decompose` existed
-because `blend`'s relocated opacity begins at 9 and `transformation`'s offset at 25 — odd
-bits, which no shift of an even grid can reach, so each appeared as two phantom half-fields,
-"one that always looks like a value and one that always looks like a pointer". Reading each
-field at its own bit removes the shift, the straddle table and the phantoms together; the A/B
-that landed it moved **no** slot position or width anywhere in the corpus, on any of
-`inputs`, `cls_slots`, `param_slots`, `cls_params`, `end`, `hdr`, `prog` or `size_slot` over
-903,440 records.
-
-`emboss` is the case that first forced an odd offset, and its arbiter was not the fit.
-Read at bit 0 it was the only filter in the corpus that failed §6.3's program check, and it
-failed it completely — 450 slots whose state says `program` and not one of which decodes.
-Read at bits 1, 3, 5, 7, the header length is reproduced on **375 of its 375** covered
-records and the two words in question are the plain floats they look like (1.0 and 0.25 on
-`sci_fi_elements_02` record 3807). §6.3's program check reads **198,224 of 198,224**
-corpus-wide, where it read 198,581 of 199,031 — the whole residual was this one filter's
-offsets. The measurement is in FORMAT-NOTES.md, "Every filter, bit by bit", and the A/B
-appended after it. The two bits are a STATE, not a count:
+6, 8 and 10, `dirmotionblur`'s at 0 and 2, `normal`'s at 0, 2 and 4, `distance`'s at 2. The
+two bits are a STATE, not a count:
 
     00  absent          the parameter is not present; it costs no slot
     01  baked           a constant, inline in the header, one word per component (§7.3)
     10  program         a pointer into the instruction stream (§10)
-    11  image input     an edge — a backward record index, not a parameter at all
+    11  image input     an edge — a backward record index, not a parameter (§6.2's caveat)
 
-**The state legend has one exception, and it is a field that is not a parameter.**
-`distance`'s field 0 declares that filter's optional mask INPUT from its LOW BIT alone, so
-`01` adds an edge where the legend above would read a baked value — see §6.3. Such a field
-takes no place in the parameter block, and the tell is its cost: one word in `01` and `11`
-and none in `10` tracks a single bit, where a parameter costs a word for its value and a
-word for a pointer.
+**The state legend has one exception, a field that is not a parameter:** `distance`'s field
+0 declares that filter's optional mask INPUT from its LOW BIT alone, so `01` adds an edge
+where the legend would read a baked value (§6.3). It takes no place in the parameter block.
 
-**Placement is a cursor, not an index.** The walk visits fields in ascending bit order, and
-each present field advances the cursor by its own width. Nothing stores a slot number (§6.1),
-so a parameter's position is the sum of the widths of the fields before it and cannot be
-computed from its offset alone.
+**Placement is a cursor, not an index.** The walk visits fields in ascending bit order
+(`text` excepted, §6.1), and each present field advances the cursor by its own width.
+Nothing stores a slot number, so a parameter's position is the sum of the widths of the fields
+before it and cannot be computed from its offset alone.
 
-**A parameter's presence mask is exactly `3 << b`.** This is what makes the rule one
-rule rather than a per-filter table: over the five filters that declare parameters, all
-fourteen masks resolve to exactly one field, by a single shift-and-compare —
+**A parameter's presence mask is exactly `3 << b`.** Over the five filters with named `w1`
+parameters, all fifteen masks (fourteen parameters; `blend`'s `opacitymult` has two) resolve
+to exactly one field by a single shift-and-compare (`sbsasm.PARAM_SPEC`) —
 
     blend            opacitymult 0x0030 -> bit 4    opacitymult 0x0600 -> bit 9
     dirmotionblur    intensity   0x0003 -> bit 0    mblurangle  0x000c -> bit 2
@@ -590,628 +465,368 @@ fourteen masks resolve to exactly one field, by a single shift-and-compare —
     levels           levelinlow  0x0003 -> bit 0 ... levelouthigh 0x0300 -> bit 8
     fxmaps           fx_param0   0x0003 -> bit 0 ... fx_param3   0x0300 -> bit 8
 
-**THE OFFSETS ARE DERIVED, NOT STATED, and a reader should know which half of this section
-is measured.** The fields, the state codes and the cursor are all read from the file. Where
-each field BEGINS is not: it is 32 numbers derived from the corpus by
-`archive/tools/derive_legend.py`. What supports them is not one argument:
+**The offsets are derived, not stated.** The fields, the state codes and the cursor are read
+from the file; where each field BEGINS is 32 numbers derived from the corpus by
+`archive/tools/derive_legend.py`. Their support:
 
-* **Structural, and independent of any solve.** `w1` bit 0 is set in **0 of 62,898**
-  `directionalwarp` records, against a control of 247,561 of 431,890 across `blend`,
-  `dirmotionblur` and `levels`. A zero that large with a live control is the file saying bit
-  0 carries nothing for this filter. Note precisely what it settles: its first field
-  **cannot begin at bit 0**. It does not establish that it begins at bit 1.
-* **The values, on both arms.** `blend`'s relocated opacity at bit 9 is settled by what the
-  slots hold, over the whole corpus and with 0 exceptions: code `01` gives 963 records
-  holding a plain float in `[0, 1]`, none of which resolves a program, and code `10` gives
-  170 records of which not one is a plain float and every one resolves a program. Read on an
-  even grid the same two words are a pointer seen as the denormal 1.9e-39.
-  `transformation`'s offset at bit 25 is the same shape: read at bits (25, 26) it is the
-  ordinary alphabet — absent 144,245, baked 29,404, program 69,282, and `11` **never** —
-  while bits 24 and 27 are set in no record at all.
-* **`emboss`'s program check**, above: 450 non-resolving program slots at bit 0, 0 at bit 1.
-* **Independent of the width model.** The field rule and the retired positional rule produce
-  identical name lists on 78,783 of 78,783 records. The positional rule never decomposes
-  `w1` into fields at all, so this agreement does not rest on the legend.
-* **Parsimony, and it should be discounted.** An exact reproduction of the header length is
-  not evidence about the decomposition — a misaligned decomposition can sum correctly, which
-  is why nothing caught the even grid for as long as it stood.
+* **Structural:** `w1` bit 0 is set in 0 of 62,898 `directionalwarp` records (control: 247,561
+  of 431,890 across `blend`, `dirmotionblur`, `levels`) — its first field cannot begin at bit 0,
+  which does not by itself put it at bit 1.
+* **Slot values:** at `blend`'s bit 9, code `01` holds a plain float in `[0, 1]` on 963 of 963
+  records and code `10` a resolving program on 170 of 170 (FORMAT-NOTES.md, "`blend`'s opacity
+  moves when its mask port is connected"); `transformation` read at (25, 26) is the ordinary
+  alphabet with `11` never, and bits 24 and 27 are never set (FORMAT-NOTES.md, "Corrections to
+  my own not-walked map").
+* **The program check (§6.3):** `emboss` read at bit 0 has 450 program slots that do not
+  decode; at bits 1, 3, 5, 7 none fails and the header length is exact on 375 of 375
+  (FORMAT-NOTES.md, "`emboss`: the state legend is wrong"; "Fix 2 — `emboss`'s grid").
+* **Independent of the width model:** the field rule and the positional rule ("the present
+  parameters occupy the last `n` header slots", which never decomposes `w1`) give identical
+  name lists on 78,783 of 78,783 records.
+* An exact header length is **not** evidence about the decomposition: a misaligned one can sum
+  correctly.
 
-So the honest statement is that the file forecloses some starting positions and the rest are
-inferred from what the slots hold. Read alongside §7.3: the format states the width legend,
-and what it does not state is the KEY — which field carries which type, and where each field
-begins. Two halves of one missing declaration.
+So the file forecloses some starting positions and the rest are inferred from what the slots
+hold. With §7.3: the format states the width legend; what it does not state is the KEY —
+which field carries which type, and where each field begins.
 
-`directionalwarp` is the reason an offset must be read rather than assumed. Its `intensity`
-is bits 1 and 2, which STRADDLE the fields of an even grid; a matcher that assumes bit 0
-finds no field for it, names neither of its parameters, and returns nothing on 62,146
-records — silently, because an empty parameter list is indistinguishable from a filter that
-declares none.
+**An offset must be read, not assumed.** `directionalwarp`'s `intensity` is bits 1 and 2; a
+matcher that assumes fields begin at even bits finds no field for it, names neither of its
+parameters, and returns nothing on 62,146 records — silently, because an empty parameter list
+is indistinguishable from a filter that declares none.
 
-**The rule subsumes the positional fallback it was thought to need.** Because of that
-straddle, `directionalwarp` was placed by a separate positional rule — "the present
-parameters occupy the last `n` slots of the header". Read at its own offsets, the field rule
-and the positional rule produce identical name lists on **78,783 of 78,783** records across
-both filters that use it. The positional rule is not a second mechanism; it is this one seen
-from the far end of the header.
+**`fxmaps`' node parameters are in its five `w1` fields** (its PATTERNS' parameters are in
+the FX entry table, §8). Field 0 is `background` (`channel` width — one word grey, four
+colour), field 1 `hurst`, field 2 `opacitymult`, each named by a paired source; field 3's baked
+arm is four words and its program arm returns a 4-vector from the FX-Map's slot 0, field 4's
+from slot 4; fields 3 and 4 are unnamed (FORMAT-NOTES.md, "Graph 001's first annihilation
+point is a white canvas the file states").
 
-**Where it was called vacuous, and is not.** This section used to say `fxmaps` "has no
-parameter fields at all" and that its parameters live only in the FX entry table (§8). The
-PATTERNS' parameters do; the NODE's own sit in these five fields, and three are named by
-paired sources: field 0 is `background` (`channel` width — one word grey, four colour;
-`ie_particles`' colour node states `0 0 0 1` and its record bakes (0, 0, 0, 1)), field 1
-`hurst` and field 2 `opacitymult` (`Clouds_3_Animated` states 0.42 and 10.7 on its one node and
-record 50 bakes them there). Field 3's baked arm is four words and its program arm returns a
-4-vector from the FX-Map's slot 0, field 4's from slot 4; both are unnamed. Over 41,164
-records, 61,501 placements agree with the walk. The earlier memo that attributed header
-parameters to this filter named **0 of 95,426** slots, and that count stands: it was placing
-them in the wrong words, not naming fields that do not exist. See FORMAT-NOTES.md, "Graph
-001's first annihilation point is a white canvas the file states".
-
-**ONE REGION OF `w1` IS NOT FIELDS AT ALL, AND THE FILE PROVES IT RATHER THAN SUGGESTING
-IT.** `transformation`'s `w1` bits 0-4 are a 5-bit INTEGER. They are not `(state << 2k)`
-pairs, and no partition of them into two-bit fields — or into single-bit flags — can hold
-what the corpus states, because a cost is additive over a partition and four observed codes
-contradict every split finer than four bits. Each pair below differs in **bit 0 alone**, and
-all four occur under one class word (`0x03197704` / `0x03195504`), so no class interaction is
-available to rescue them:
-
-| split | one pair says | the other pair says |
-|---|---|---|
-| bit 0 alone | `0x21`→0 / `0x20`→0 (322, 898 records): bit 0 is free | `0x3f`→0 / `0x3e`→1 (175,110, 25): bit 0 costs a word |
-| a field at (0, 1) | `0x23`→0 / `0x22`→0 (304, 250): state 10 = state 11 | `0x3f` / `0x3e`: state 10 is one word higher |
-| a field at (0, 1, 2) | `0x27`→0 / `0x26`→0 (251, 250) | `0x3f` / `0x3e` |
-
-Read as an integer `k` it resolves, and the arbiter is the record's own geometry rather than
-its header length. **`k` is how many times the record halves its input.** Over the 4,192
-records whose field reads 0..13 and whose single image input resolves to a record with a
-stated size, `own log2 size = max(input log2 size − k, 0)` holds on 84.1% — **99.47%** where
-the input is a `levels` record, 92.72% where the record carries a size expression — against
-**25.3%** for the same law at `k = 0` and 7.1% for a uniform guess over 0..13. Where exactly
-one `k` in 0..13 reproduces the size relation it is the STATED `k` on 2,536 of 2,945
-(86.1%). The pyramids are visible directly: `RoadSubstance002` records 2566–2576 all read
-input 2565 (log2 6×6) and read `k` = 1…11, at their own sizes 5, 4, 3, 2, 1, 0, 0, 0, 0, 0,
-0.
-
-Two of the 32 values are reserved and the rest of the high half is unobserved:
+**`transformation`'s `w1` bits 0–4 are a 5-bit INTEGER `k`, not fields.** No partition of
+them into two-bit fields or single-bit flags can hold the corpus: cost is additive over a
+partition, and observed codes differing in bit 0 alone under one class word
+(`0x3f`/`0x3e`, `0x23`/`0x22`, `0x21`/`0x20`, `0x27`/`0x26`) disagree about what that bit
+costs (FORMAT-NOTES.md, "Why no field grid can hold it"). Its codes:
 
     0 .. 13    literal, and costs no header word           4,192 records
-    14 .. 28   never observed -- a reader REFUSES; see below
+    14 .. 28   never observed -- a reader REFUSES
     29         costs no word, and is not a size rule           3 records
     30         ONE PROGRAM POINTER, after the class block     25 records
     31         the ordinary value, costs no word          230,639 records
 
-The `30` arm is what closed a 25-record hole in both header models. At the word just past
-the header they used to state, a program resolves on **25 of 25** records reading 30 and on
-**0 of 234,834** reading anything else — the single apparent exception is a neighbouring
-`fxmaps` record's tree lying inside this record's extent, the directory being a partition
-(§5). All 25 programs return an **int1** computed from `$sizelog2`, which is the same kind
-of quantity the literal arm holds: `|log2 w − log2 h| ≥ 2 ? int(|log2 w − log2 h| − 1) : 0`.
-So the field's dynamic arm computes a halving count and its static arm states one.
+* **0..13: `k` is how many times the record halves its input:** `own log2 size =
+  max(input log2 size − k, 0)`, on 84.1% of the 4,192 against 25.3% at `k = 0` (92.9% where the
+  record carries an `$outputsize` expression, 42.3% where it does not). `k` is **not** bounded
+  by the input's size; `max(·, 0)` absorbs the overhang (FORMAT-NOTES.md, "What the integer is
+  — a halving count").
+* **30** emits one program pointer, placed before the other `w1` fields. A program resolves
+  there on 25 of 25 records reading 30 and on 0 of 234,834 reading anything else; all 25 return
+  an int1 computed from `$sizelog2` — `|log2 w − log2 h| ≥ 2 ? int(|log2 w − log2 h| − 1) : 0` —
+  a halving count, like the literal arm (FORMAT-NOTES.md, "The 25 records are real").
+  *Not shown by the corpus:* its place relative to fields at 6, 25 and 28 — no record sets 30
+  together with any of them.
+* **14..28 refuses.** The range is unobserved, not unreachable (`k` = 14 needs only a log2-8
+  input and an excess of 6, the observed maximum), and the two exotic codes observed split on
+  cost (29 none, 30 one word). Charging zero and meeting a pointer code shifts every later slot
+  silently; a refusal is reported (FORMAT-NOTES.md, "The two loose ends of `transformation`'s
+  integer field"). With `w0 = 0x03197704`, `w1 = 0x20 | k`, `header_words` answers
 
-What this does NOT establish is the slot's place among the other fields. No corpus record
-sets the integer to 30 and a field at 6, 25 or 28 at the same time, so "at the head of the
-parameter block" is where the bit offset puts it and not something the file has shown.
+      k = 0..13   4      k = 14..28   None      k = 29   4      k = 30   5      k = 31   4
+
+* **29** costs no word (each record's directory extent equals the stated header) and is not a
+  second pointer arm. It is not the halving law at any single `k` and not a synonym for 31; 29
+  and 30 have never been seen under a common class word. The records are `US_Flag` 45,
+  `Embroidery_Legacy` 2 (byte-identical headers, plausibly one library sub-graph) and
+  `TatamiSubstance001_COMPILED` 906. *Open:* what 29 MEANS — all three lack `$outputsize`,
+  where the size law is weakest, and offer no program slot to arbitrate; a file with several
+  records at 29 whose inputs differ in size would settle it (FORMAT-NOTES.md, "What the 29
+  records did settle, about the law rather than about 29").
+
 **Bit 5 is separate and is not part of the integer** — see §13.4.
 
-**THE REFUSAL AT 14..28 IS IMPLEMENTED, AND IT USED TO BE A GUESS IN THE OTHER DIRECTION.**
-`record_layout.header_words` charged those codes zero and said nothing, while this section
-said refuse — the last place in the header model where a guess was still doing work. It now
-returns `None`, the same answer it already gives for filter 9's 5 records and for a baked
-cell the corpus never exercised, and `decompose` refuses with it, so a walk is never laid
-against a length nobody can state. (`vectorshape`'s 139 and `emboss`'s 171 were on that
-list and are not any more — see §6.4. The refusal count is **5**, not 315.) No
-corpus record reads 14..28, so the change moves **0 of 903,616** records — per filter, on
-`end`, `inputs`, `hdr`, `param_slots`, `cls_slots`, `prog` and `size_slot` alike — and the
-demonstration is therefore synthetic. With `w0 = 0x03197704` and
-`w1 = 0x20 | k`, varying only the low five bits, `header_words` answered 4 at every `k` but 30
-before, and now answers
-
-    k = 0..13   4      k = 14..28   None      k = 29   4      k = 30   5      k = 31   4
-
-**Why refuse rather than charge zero, since every code outside the pointer arm does cost
-nothing.** Because that sentence is true of the codes a reader will actually meet and says
-nothing about the ones it will not. Zero is measured for 0..13 (4,192 records) and for 31
-(230,639 records), and those are the field's two ORDINARY arms. Above 13 the corpus holds
-exactly two exotic codes and they split one-one on cost: 29 costs nothing on 3 records, 30
-costs a word on 25. The local prior over 14..28 is a coin, not a zero. A reader that charges
-zero and meets a code that emits a pointer is one word short and every slot after it in that
-record moves — silently, which is the failure this specification exists to prevent — while a
-reader that refuses reports a record it cannot lay out, on a file nobody has seen. Between a
-wrong length nobody notices and a refusal somebody does, the model takes the refusal.
-
-**And 14..28 is NOT unreachable by construction, which is the one argument that would have
-justified charging zero.** Halving 14 times wants a 16384-pixel input, which is past anything
-these 437 packages feed a `transformation`: the largest such input is log2 13, and the largest
-canvas anywhere in the corpus is log2 14 — `Splatter.sbsasm` record 1366, a `transformation`
-at 16384×16384. But `k` is **not bounded by its input's size**. 818 of the 4,192 literal-arm
-records state a `k` LARGER than their input's log2 — by 1 on 240 records, by 2 on 244, by 3 on
-214, by 4 on 79, by 5 on 24 and by 6 on 17 — because the compiler states the count and
-`max(·, 0)` absorbs the overhang. A `k` of 14 needs only a log2-8 input and an excess of 6,
-which is already the observed maximum. So 14..28 is unobserved in this corpus, not unreachable
-in this format, and a reader may not decline to handle a code the format can emit.
-
-**WHAT THE THREE RECORDS AT 29 ARE, AND WHAT n = 3 CANNOT SETTLE.** They are `US_Flag` record
-45 and `Embroidery_Legacy` record 2 — byte-identical headers, `w0 = 0x03088805`,
-`w1 = 0x0000003d`, three words each, one image input and nothing baked — and
-`TatamiSubstance001_COMPILED` record 906, `w0 = 0x03380004`, `w1 = 0x0000007d`, seven words,
-baking a near-identity `matrix22`. Three files with three distinct declared manifest authors
-(JohnLogostini, Adobe, ambientCG), so 29 is something the compiler emits and not a hand edit
-or a corrupt word; but the first two sit in one compiled idiom — the input feeds a
-`pixelprocessor` directly and also through this record into a second `pixelprocessor` whose
-`w1` is `0x00010001` — so they are plausibly two instances of one library sub-graph and count
-as about two independent observations rather than three. What is settled:
-
-* **It costs no word, and that is measured rather than assumed.** Each record's directory
-  extent is exactly the header this specification states — 12, 12 and 28 bytes, i.e. 3, 3 and
-  7 words. Which is also why it needs no refusal: what a reader must know about a code is what
-  it costs, and for 29 that is read off the file.
-* **It is not a second pointer arm.** On 3 of 3 there is no word inside the extent past the
-  header for a pointer to occupy, so the test that found the 25 cannot even be run there. Run
-  at the same slot position, a program resolves on 25 of 25 at code 30 and on 0 of 3 here.
-* **It is not the halving law at 29.** Two of the three are 256×256 records reading a 256×256
-  input, where `max(input log2 − 29, 0)` demands 1×1. Nor is it the law at any other single
-  `k`: those two need `k = 0`, and the third — 1×1 from a 16×16 input — needs `k ≥ 4`.
-* **It is not "no change" either**, so it is not a synonym for 31: that third record does
-  change size.
-* **It is not an artefact of its class word.** All 25 records at code 30 sit under class word
-  `0x0319` and none of the three at 29 does. The two class words that carry 29 — `0x0308` and
-  `0x0338` — carry 510 `transformation` records between them, 398 of them reading 31, so 29 is
-  a distinction the compiler draws inside its own population. It also means 29 and 30 have
-  never been observed under a common class word and cannot be compared directly.
-
-What n = 3 cannot settle is what 29 MEANS, and both arbiters are silent for structural reasons
-rather than by accident. The field costs no word in this state, so there is no program slot for
-the manifest arbiter to read an `inputref` out of (§13.4); and two of the three bake no
-`matrix22` and no `offset`, so `sourcematch`'s constant-pinning has nothing to pin. All three
-also carry no `$outputsize` — class bit 16 clear on 3 of 3 — and that is the weak arm of the
-size law itself: over the literal arm it holds on **3,408 of 3,667 (92.9%)** where the record
-carries a size expression and on **222 of 525 (42.3%)** where it does not, so the law is
-weakest exactly where 29 lives. The specimen that would settle it is a file carrying several
-records at 29 whose inputs differ in size. Three points, two of them one idiom, cannot separate
-a size rule from a sampling or wrap mode that merely correlates with one.
 ---
 
 ## 8. FX-Map trees
 
-`fxmaps` records (filter id 4) contain a tree of pattern-generator nodes, reached from a
-forward pointer at slot 2 (`node_ptr + 52`). A tree holds two distinct structures,
-discriminated by the tag word's **low nibble**:
+An `fxmaps` record (filter id 4) names its FX structure at slot 2 (the walk's `root` slot,
+`words[2] + 52`). The region holds two kinds of structure: a **chain** of control nodes
+(iterate, switch, branch) and a **table** of entry cells (the patterns drawn, each a source
+`paramset`). The root is either. A chain ends by pointing at the first table entry (97.2%
+of chains end on a nibble-8 word; FORMAT-NOTES.md, "The node chain and the parameter table
+are one structure"); a table run may end by pointing back at a node. Every
+pointer carries the `+52` skew, and every offset is absolute. As everywhere in §5, the
+structure need not lie inside the naming record: 805 records address a table outside
+themselves, in every resolvable case inside an earlier record. Bound reads by the body, not
+the record.
 
-- **nibble 9 or 0xB → a node header.** A node is the mask-walk one scale down:
-  `[tag][fields]`, where the low byte's high nibble (bits 4-7) is a presence mask over the
-  fields and the successor pointer follows them. The successor word offset is derivable, not
-  tabled: `successor_word = base + popcount(header & 0xF0)`, `base` = 1 (nibble B) or 2
-  (nibble 9) — verified 30/30 over every header seen 10+ times. Each set bit inserts one
-  field: bit 4 a branch (two children, e.g. `0x1B`), bit 5 a `randomseed` program, bit 6 a
-  baked `randomseed`, bit 7 the base program+successor structure. So `0x0b` is a leaf
-  (successor at word 1), `0x18b` puts its successor at word 2, `0x1ab`/`0x1cb`/`0x89` at
-  word 3, `0x99`/`0x1db` at word 4.
+**Classifying a word.**
 
-  **Bit 4 makes a branch on a NODE too, not only on a leaf, and the successor rule does not
-  see the second child.** `0x1db` (bits 4, 6, 7) is the case, and all 23 in the corpus are
-  one structure byte for byte: `[0x1db][2][program][child][child][0x09000013]`. The
-  computed successor — word 4 — is the *second* child; word 3, which the mask spends on
-  bit 6's baked `randomseed`, is the first. It is a child and not a value that happens to
-  dereference: **the program at word 2 ends exactly where word 3's target begins, 23 of 23**,
-  so the child abuts its own node's program, the same contiguity `0x1B`'s sentinel form uses.
-  Following it reaches an entry table in 20 of 23 against 0 of 23 for the neighbouring word
-  as a control, and the same test over every other family read as the noise floor on the
-  60-file sample (`0x89` w2 1 of 47, `0x1cb` w2 2 of 30, `0x99` w3 0 of 44). **That floor
-  was the population, not the rule**: corpus-wide the spare word is wired on 205 of 27,093
-  `0x89`, 88 of 238 `0x99` and 65 of 1,865 `0x1CB`, and every wired one is a child — the
-  FALSE child of a two-way Switch for `0x89`/`0x99`, a run-once-after-the-loop child for
-  `0x1CB` (§13.7). A sample in which the false output is almost never connected cannot
-  see a slot whose usual value is "unconnected". Both `0x1db` children are `0x1a3` and open
-  identical chains. The node's program is not a selector: one distinct source across all 23,
-  reading nothing, writing constants to slots 1–6 and returning a literal `1` — a state
-  initialiser, which is the role `0x1B`'s program also plays. So `0x1db` is the `0x1B`
-  BRANCH shape wearing bit 7, and a reader that dispatches on bit 7 first will never see it.
+| word | structure |
+|---|---|
+| low byte bit 7 set, low nibble 9, B or 3 | **node** (mask-walk below). Node headers are ≤ `0xFFFF` |
+| low nibble B, bits 4–7 clear (`0x??0B`) | **leaf** |
+| low byte `0x1B` | **branch** |
+| low nibble 9, bit 7 clear (`0x09`, `0x49`) | **pointer cell** `[hdr][next][payload]` |
+| low nibble B, bit 6 set, bit 7 clear (`0x?4B`) | **payload cell**: continues at slot 2, which addresses a table entry |
+| > `0xFFFF`, low nibble 8 | **entry cell** (a Quadrant). Nibble-0 `patterntype` is still an entry |
+| high half `0x0002` **and** low nibble 8 | **chain link**: an entry cell met in the chain (`0x00020008` is the bare cell below) |
 
-  **A reader following only the computed successor draws half of such a record.** 23 records
-  across 12 files walk one table entry and drop one, and the two carry different parameter
-  masks (`0x55300158` dropped against `0x05300758` walked, constant across every file — they
-  cook from one template). For `0x1db` whether the engine draws both children or selects
-  one is **not established**: no specimen with a `0x1db` ships an export. For the three
-  families above it is: Bricks record 10081's Switch program writes a column count into
-  slot 45 on its false branch and a row count into slot 46 on its true branch, and the
-  false word addresses the node whose program reads slot 45 (§13.7).
-- **nibble 8 → a paramset table entry**, *not* a node, and **the run can end by handing back
-  to a node** — the mirror of the chain ending on an entry tag. The entries are a
-  **linked list**: each entry stores a pointer to the next one — the header slot reaching furthest forward,
-  past the entry's own inline program. The entry ends at its inline program, whose length the
-  program states itself (a `u16` instruction count in its first word), so the entry extent is
-  the program's structural length, not a tabled stride. (An earlier `FX_ENTRY` stride table
-  was a per-tag *fit* of this pointer's distance, and lossy because the distance is the inline
-  program's length, which the tag does not encode; following the stored pointer reaches ~78k
-  entries the strided walk stopped short of, with zero phantoms.)
-- **high half `0x0002` → a Quadrant cell, and the "chain" is a NESTING.** The commonest
-  entry, `0x00020008`, is a bare cell whose slot-1 pointer names its child 100% of the time.
-  This paragraph used to call these structural linked-list cells excluded from emission;
-  that was the count of DISTINCT children. Every entry cell is a `paramset` — a Quadrant
-  that draws its own pattern in its region and hands each of its FOUR outputs a quarter of
-  that region — and a bare cell is a Quadrant with nothing to draw, so k of them in a row
-  are k nestings of four. Bit 17 is ONE child pointer shared by all four outputs; bit 16 is
-  FOUR pointers, one per output, 0 for an unconnected one. A parameterised cell is
-  `[tag][params ptr][bit-7 word]?[child ptrs][bit-4 word]?[params …]` — the params ptr
-  addresses the first parameter word, `base + 4·(2 + n)` for every bit-7-clear cell in the
-  corpus (136,089 of 136,089), so the pointers sit at word 2; a bare cell has no params ptr
-  and is `[tag][child]`. The bit-4 word (a small integer; Clouds_3's declared `randomseed`
-  values 42 and 16 among them) sits AFTER the pointers, not before them as `fx_entry_walk`'s
-  ascending order would place it — 27,500 of 27,519 such cells resolve at word 2 and 0 at
-  word 3, 5,100 of 5,100 bit-7 cells at word 3 — and the two words are one slot each, so no
-  program slot moves. Permitted source and compiled record agree node for node
-  (`SubstanceDesigner__Clouds_3_Animated`, six `paramset`s whose `output0..3` all name the
-  same child; its record 50 walks four bare cells and two draws). See §13.7 and
-  FORMAT-NOTES.md, "The level fault upstream of 10055 is a white-noise FX-Map emitting ONE
-  pattern, and the cons chain is quadrant subdivision". The cell
-  is **two words** when bare, and the list strictly alternates with the three-word pointer cell:
-  `[0x9][next][payload] [0x00020008][next] [0x9][next][payload] …`, every pointer cell's
-  payload naming the same shared `0x?4B`. **What the list is:** the library Splatter's
-  chain of Switches with `Grid_Number` folded by the compiler — each `0x9` is
-  `[switch][false → next, the bare Quadrant][true → the draw]` with the selector BAKED into
-  bit 6 (`0x49` = true), so a `0x49` at index k after k bare Quadrants draws its payload in
-  4^k regions. Over the corpus 59 of 60 such lists carry exactly one `0x49`; the paired
-  source `Texture_Randomizer.sbs` instances `splatter` with `Grid_Number` 0 four times and
-  each compiles to a lone `0x49`; SandyStonePath's `Grid_Number` 3 puts it fourth. Read
-  by default (`fx.pointercell = switch`, §13.9; `list` keeps the old walk as an arm). The walk steps through the link by its slot 1 and
-  now reports it; it did not, so its two words were the one structure in the walk that
-  nothing named — 91 of the 721 unreached cells over 60 files, traversed all along, and
-  2,832 bytes corpus-wide. Guard on the LOW NIBBLE: `0x0002711B` is a `0x??1B` branch whose
-  high half happens to be 0x0002, and treating it as a link costs `Splatter.sbsasm` record
-  242 its only entry.
+Test the low nibble before the high half: `0x0002711B` is a branch, and reading it as a link
+loses `Splatter.sbsasm` record 242 its only entry (FORMAT-NOTES.md, "And one cell was
+traversed all along and never reported"). `0x081` (one specimen, nibble 1) is
+unexplained and not modelled.
 
-**A cell with two forward pointers loses one, and this is general rather than `0x1db`'s
-special case.** The paragraph above states it for `0x1db`; measured from the byte side —
-every run of record bytes no reader can label, over the whole corpus — the same shape appears
-on a dozen tag families. It was **332,766 bytes of FX cells no walk in the file reached**,
-183,804 of them opening on a tag and the rest abutting a cell that does; it is **29,132**
-now, 21,316 opening on a tag, after the repairs below, the out-of-line reading further down
-and its trailing pointer word.
+**Nodes: the mask-walk one scale down.** A node is `[header][fields]`. Bits 4–7 of the low
+byte are a presence mask; each set bit inserts one field ahead of the successor:
 
-**The fix is to follow BOTH, not to move the choice.** `fx_table` steps by "the slot reaching
-furthest forward" over the slots the tag's *parameter* layout declares, so a tag whose layout
-is empty is searched at slot 1 alone: `0x00020018` is `[tag][→leaf][→next cell]` and slot 1 is
-a one-word `0x0000000b` leaf, so the chain dies on a dead end with the real continuation
-unread at slot 2. Leave the step exactly as it is and enqueue the cell's *other* forward
-targets — within the tag's stated width, and only where the layout is empty — as further
-table starts. Nothing can be lost by construction.
+    successor word = base + popcount(header & 0xF0)      base: nibble B = 1, 9 = 2, 3 = 1
+    program word   = 1 + bit 4;  bit 5 adds a second program in the next word
 
-**Widening the search instead is wrong, and it is wrong twice.** Searching to
-`fx_entry_walk_end` sends `0x00020008` — 50,965 entries, a TWO-word cell whose slot 2 is the
-*next* cell's tag word — off the list on 411 of 5,657, onto floats and bytecode: unreached
-bytes 18,856 → 31,030 over 60 files. Correcting that off-by-one (`walk_end` is the last slot
-used, so the width is that number of words and the slots are `1 .. width-1`) reverses the
-direction, 15,240 → 10,162, but still moves the choice, and `0x00010008` then takes a far
-back-referencing link over the contiguous next entry: 313 records lose 315 entries, 35 of
-them real ones carrying programs. The furthest-forward rule resolves `0x00020018` and
-`0x00010008` in opposite directions and nothing in the tag separates them, which is why the
-choice must not be the thing that moves.
+- bit 4: one word ahead of the program (on a bit-7-clear header it makes the `0x1B` branch
+  instead);
+- bit 5: a `randomseed` program after the base program;
+- bit 6: one word (on `0x1CB`/`0x1DB`, the after-child pointer; §13.7);
+- bit 7: the base program + successor structure. `node_shape` returns nothing without it.
 
-**The handoff also runs both ways.** A chain ends by pointing at the first table entry, which
-this section states. Symmetrically a table run ends by pointing at a **node**: `fx_table`
-follows the entry's own next-pointer, lands on a bit-7-set header, and stops — and the whole
-walk stopped with it, so every node past that point, and every table *those* nodes hand off
-to, was read by nothing. Over 60 files the run stops on such a word 40 times; **37 of the 40
-carry a header the same record's own chain already yields**, and following those 37 reaches
-**148 further cells — 148 of 148 of them bytes the byte audit independently classified `fx
-cell not reached`, and 148 of 148 with the cell's own stated extent landing exactly on a
-program start.** The other 3 are `0x3E999999` and `0x3F599999`: floats whose low byte ends in
-`0x99`, which the node-header mask rule therefore hands a shape to. Four independent tests
-separate the two populations unanimously, 37 against 0 on each — the tag appears on a node
-this record's walk already reaches, the stated extent lands on a tag or a program, the
-declared program resolves, and the successor is a cell of a known kind. Only the first is
-used, because it is the one that is not a value probe, and it is frozen before the
-continuation fires so the rule cannot licence itself.
+`base` is stated per nibble; what it means is open (bit 1 of the nibble splits the three,
+which is a three-point fit and not a rule). Nibble 9's extra base word is the FALSE child of
+a switch. Verified 30/30 over every header seen 10+ times (FORMAT-NOTES.md, "The FX-Map node
+successor is a popcount"; `sbsasm.node_shape`).
 
-One thing had to be **bounded** rather than reached. The nibble-9/B disjoint-span program
-scan is capped by "the element's own stated extent", read as its slot-1 step — and a one-word
-`0x0000000b` leaf has no step to read, because its slot 1 *is* the next cell's tag, so the
-scan ran its full 14 words through the neighbour. Invisible while such a leaf was always the
-last thing the walk saw; the moment the chain continues past one it is 30 violations of the
-shape "a program at +7 words of a 1-word structure". The mask states the width
-(`leaf_successor`, `pointer_cell_successor`) and capping with it removes 91 attributions, 88
-of them ones the continuation had just invented and 3 that read a neighbouring constant —
-`0x00020018 + 52`, `0x00000D00 + 52` — as a pointer.
+| header | words | role (§13.7) |
+|---|---|---|
+| `0x18B` | `[hdr][numberadded][succ]` | iterate (`addnode`) |
+| `0x19B` | `[hdr][bit-4 word][count program][succ = loop]` | iterate |
+| `0x1AB`, `0x1A3` | `[hdr][randomseed][numberadded][succ]` | iterate |
+| `0x1CB` | `[hdr][program][after child][succ = loop child]` | iterate with after-child |
+| `0x1DB` | `[hdr][bit-4 word = 2][program][after child][succ = loop child]` | `0x1CB` in a variant compile |
+| `0x89` | `[hdr][switch program][FALSE child][succ = TRUE child]` | switch (`markov2`) |
+| `0x99` | `[hdr][bit-4 word][program][FALSE child][succ = TRUE child]` | switch / stepper |
 
-Over the whole corpus 39,839 of 41,164 `fxmaps` records walk identically, 1,322 gain items
-(+1,148 node, +5,029 entry) with the old list an exact ordered subsequence every time, and 3
-are altered — the three leaf attributions above. `walk_partition` holds at 32 FX violations
-while attributions rise 73,964 → 75,557, so all 1,593 new attributions stay inside their own
-structure's stated extent.
+A spare child word is 0 when unconnected. It is wired on 205 of 27,093 `0x89`, 88 of 238
+`0x99` and 65 of 1,865 `0x1CB` corpus-wide, and on all 23 `0x1DB` (12 files, both children
+`0x1A3`, the program `0x1CB`'s line for line: zero the statistics slots, return 1). A reader
+that follows only the successor draws half of each such record; `fx.chain` = `tree`
+(default) reads both (§13.7). No export covers a `0x1DB` record, so its reading is
+structural only (FORMAT-NOTES.md, "`0x1DB` and `0x1A3` are the Bricks tiling compiled with
+bit 3 clear and bit 4 set").
 
-**And the words the parameter layout drops are pointers too.** `fx_entry_walk` marks bits
-4, 7, 16 and 17 `structural` — they occupy slots but are not parameters — and
-`fx_entry_layout` drops them, so `fx_table`'s step, which searches "the slots the tag's
-*parameter* layout declares", passes over them numerically and enqueues nothing they name.
+**Leaf** (`0x??0B`, bit 7 clear): `[hdr][successor]`, successor at word 1 by the same mask
+rule (`leaf_successor`). `header >> 8` is the leaf's baked emission count (§13.7). A leaf
+states no program slots; a reader that scans its words for programs must cap the scan at its
+stated width, because a one-word `0x0000000B` leaf's slot 1 is the next cell's tag.
 
-**Bit 7 occupies no slot.** Crediting it one put every program of the `0x??5?0088`
-family one slot late — `0x54540088` (108 entries; Bricks 002/005/006, Cliff, Cobblestone,
-RoofTiles), `0x54d40088` (14), `0x54500088` (12) and three smaller tags: the word named
-`opacity` returned a 2-vector in [−0.5, 0.5] (the position), `patternsize` a scalar (the
-rotation), and `patternsuppl` landed on the trailer word `0x0900003b`, 0 of 108 resolving.
-Without the slot, 140 of 140 named programs resolve with the arity the name declares
-(opacity 1, branchoffset 2, patternsize 2, rotation 1, suppl 1). The word bit 7 was
-credited with is slot 2, a record-local pointer (`rec + 8`) whose `+52` target is the
-opacity program written inline after the entry — the same word `0x54540848` entries carry
-at slot 2 with no bit 7 set, where it has always read as `opacity`. Entries that set bit
-31 as well are left as they read: their slot 1 is a small integer (8, 2, 4 — the image
-index as a value, not the own-pointer), which takes the slot bit 7 was credited with, so
-their named programs land where they did (`0xd5140088` 24 of 24 with arity; `0x91100088`
-7 of 7). Whether bit 31 is that leading index or a trailing program is open: the trailing
-row resolves on `0xd5140088` (24 of 24) and on none of `0x83000088` (0 of 86).
-Bit 16 is a four-word field and the shape is the same two-forward-pointers one:
+**Branch** (`0x??1B`): no program of its own; word 1 states the shape (FORMAT-NOTES.md, "The
+`0x1B` family has TWO shapes, and word 1 states which").
 
-    0x00410008   slots 2,3 -> one cell      slots 4,5 -> another, further forward
-                 the step takes the second and the first is read by nothing
+- word 1 = `0x3039` (343 of 355): `[hdr][0x3039][→ child A][child B …]`, three words, two
+  children — one addressed by word 2, one contiguous at word 3. Words 4–5 belong to child B.
+- word 1 = 0 (12, all in `Splatter.sbsasm`): the table begins contiguously at word 3; the
+  node owns nothing.
 
-Enqueue each structural word as a further table start, leave the step alone. The gate is
-the record's own **frozen entry-tag vocabulary** — the word waiting at the target must be a
-tag some cell this record already yields — and it is load-bearing: ungated the sweep admits
-199 cells over 60 files of which **91 land on a byte already credited**, every one of them
-bit 7, whose word is a program pointer 4.3% of the time and whose target's low nibble is 8
-by coincidence. Gated, it admits **108 cells, 108 of 108 already classified `fx cell not
-reached`, 0 landing on a credited byte, and 108 of 108 with their own stated extent landing
-exactly on a program start.**
+**Entry cells are Quadrants.** Every entry cell is a `paramset`: it draws its own pattern in
+its region and hands each of its four outputs a quarter of that region. A run of entry cells
+is therefore a nesting, not a list (§13.7; FORMAT-NOTES.md, "The level fault upstream of
+10055 is a white-noise FX-Map emitting ONE pattern"). The tag is a presence mask over the
+entry's fields:
 
-The non-circular half is what the same slot does where nothing is at stake: the gate offers
-10,931 structural-slot targets over those 60 files and **10,895 of them — 99.67% — are
-cells the same record's walk already reaches by another path**. The control is the identical
-gate on the tag's own *parameter* slots: 1 of 34,258 program slots and 0 of 2 baked slots
-pass it, against 11,021 of 12,102 structural ones. The `[start, end]` reading of bit 16's
-pair stays refuted (42 of 359) and is not needed. What the four words MEAN is now stated
-above: one child pointer per Quadrant output, 0 where the output is unconnected (Bricks
-9804's leaf holds `[->leaf2, 0, ->leaf2, 0]`: its second pattern is drawn in outputs 0 and 2
-only), and bit 17's single word is the same child on all four.
+| tag bits | field | slots |
+|---|---|---|
+| 4 | structural word; in a Quadrant a small integer (declared `randomseed` values among them) | 1 |
+| 7 | structural word; **no slot unless bit 31 is also set** | 0 / 1 |
+| 8–11 | `patterntype − 2`; 0 is a catch-all (`patterntype` 1, 2, or a function graph) | — |
+| 16 | four child pointers, one per output, 0 = unconnected | 4 |
+| 17 | one child pointer shared by all four outputs | 1 |
+| 18 | a `blendingmode` is declared (§13.7) | — |
+| 19 / 20 | `opacity`, baked / program | 1 / 1 |
+| 21 / 22 | `branchoffset`, baked / program | 2 / 1 |
+| 23 / 24 | `frameoffset`, baked / program | 2 / 1 |
+| 25 / 26 | `patternsize`, baked / program | 2 / 1 |
+| 27 / 28 | `patternrotation`, baked / program | 1 / 1 |
+| 29 / 30 | `patternsuppl`, baked / program | 1 / 1 |
+| 31 | `imageindex`, program | 1 |
 
-**A pointer cell met inside a table run states a payload, and only the chain path asked.**
-`fx_table` calls these waypoints and steps through them; `_fx_chain_run` reads
-`pointer_cell_payload` — the cell's own last slot — for every pointer cell the *chain*
-reaches. One structure, two paths, one question asked. Over 60 files the whole population is
-15 such cells, 14 pass the guard, and **14 of 14 name a cell nothing reached**, all 14 bytes
-the audit classifies `fx cell not reached`, 0 on a credited byte.
+Slot 0 is the tag; slot 1 points at the parameter block (usually inline, so it reads
+`off + 4 · first parameter slot`, 85.75%); parameters follow from slot 2 in ascending bit
+order. A program bit's slot holds a program pointer; a baked bit's slots hold the value.
+Bit 19 is the weakest row (values to ±1e13) and bit 21's width is inferred. `patterntype`,
+`blendingmode`, `imagefiltering`, `imagepremul`, `randomseed` and `colorswitch` have no
+parameter slot (`FX_UNSTORED_PARAMS`).
 
-Corpus-wide these two take 40,892 of 41,164 records identical, 272 extended (+1,395 entry,
-+0 node) with the old item list an exact ordered **prefix** every time, 0 altered;
-`walk_partition` 32 violations before and after on 75,557 → 76,013 attributions; `fx cell
-not reached` 70,940 → 41,034 bytes and the `fxmaps` residual 55,786 → 25,720.
+- **Bit 7.** Crediting it a slot puts every program of the `0x??5?0088` family one slot late
+  (140 of 140 named programs resolve with the declared arity without it; FORMAT-NOTES.md,
+  "The blur value cannot be seen because the picture behind it was blank"). On bit-31
+  entries slot 1 is a small integer (the image index as a value), and bit 7's slot stands.
+- **Bit 31** is open. Its trailing slot is a real program pointer on `0xD5140088` (54 of 54)
+  and the body of the entry's own inline program on `0x83000088` and `0x91100088`
+  (FORMAT-NOTES.md, "The walk: bit 31's trailing program is real for one tag and program
+  BODY for two"); the self-delimited width below stops before it.
+- **Inline program.** A tag that names no program slot but sets bit 25, 27 or 29 carries one
+  program inline at the first slot after its fields (unnamed; 98% open with `inputref`). The
+  one tag this misreads, `0x00020018`, has its program at slot 1's target + 20
+  (`FX_PAYLOAD_PROG`).
 
-**What is left.** 194 cells / 7,362 bytes over the same 60 files, from 316 / 10,162. 156 are
-named only from within another *unreached* cell. The 38 that are one hop out:
+**Quadrant child pointers.** The cell is
 
-    a node field slot the mask spends elsewhere          27   0x89 w2 (10), 0x1db w3 (6),
-                                                              0x99 w3 (6), 0x1cb w2 (5)
-    0x20008 slot 1, an entry holding its program INLINE  10
-    0x410008 slot 1, a BACKWARD pointer                   1
+    [tag][params ptr][bit-7 word]?[child ptrs][bit-4 word]?[params …]
 
-**The cascade does follow, and it was measured rather than assumed.** Closing 50 of the 88
-one-hop cells took 72 of the 228 with them — 122 cells for 50, a ratio of 1.4 tail cells per
-head. The naming census is re-run after the change, not extrapolated.
+The params pointer addresses the first parameter word, `base + 4·(2 + n)` for n pointer
+words (136,089 of 136,089 bit-7-clear cells), so the pointers start at word 2, or word 3
+under bit 7 (5,100 of 5,100; on a 120-file sample every such cell also sets bit 31, consistent with
+the bit-7 rule above). The bit-4 word follows the pointers (27,500 of 27,519), not
+precedes them as ascending order would place it; both are one word, so no program slot
+moves. A **bare** cell (no bit ≥ 19, no bit 4) has no params pointer and is `[tag][child]`,
+two words. `k` bare cells in a row are `k` nestings of four; permitted
+`SubstanceDesigner__Clouds_3_Animated` agrees node for node (`render2/fxtree.py`
+`pointer_slot`; FORMAT-NOTES.md, "Quadrant subdivision lands in render2").
 
-**The node field slot is the `0x1db` refusal, and it now covers three more families.** A
-node's spare slot — the word the mask spends on bit 6's baked `randomseed`, or the word
-between a nibble-9 header's program and its successor — points forward inside the body in
-only 31 of 3,019 cases over 60 files, and 27 of those 31 land on a header the record's own
-walk already carries, against **0 of 3,001** for the word one slot past the node's stated
-extent and **0 of 3,001** for its program slot. All 27 open a chain that reaches an entry
-table. Following them closes 102 of the 194 cells and `walk_partition` stays at 32. It is
-**not done**, for the reason `0x1db` was not: it QUADRUPLES what the records it touches
-draw — `fxrender.entries` goes 1 to 4 on both reference-pack records it reaches — and the
-arbiter is silent. `Bricks.sbsasm` renders bit-identically either way across all 8,907
-rendered records, and all 27 reference-scored channels are unchanged to six decimals.
+**The pointer-cell list.** A list may alternate pointer cells with bare cells,
+`[0x9][next][payload] [0x00020008][next] [0x9][next][payload] …`, every payload naming one
+shared `0x?4B`. It is the library Splatter's chain of Switches with `Grid_Number` folded by
+the compiler: each `0x9` is a switch whose selector is baked into bit 6 — `0x49` takes the
+payload (the draw), clear takes `next` (a bare Quadrant, one more nesting). A `0x49` at index
+`k` after `k` bare cells draws its payload in `4^k` regions. 59 of 60 such lists carry exactly
+one `0x49`. `fx.pointercell` = `switch` (default) | `list` (FORMAT-NOTES.md, "The
+`0x9`/`0x49` pointer-cell list is the library Splatter's `Grid_Number`, compiled").
 
-**This is where the provenance rule bites, and it bites on the structure rather than on a
-name.** Settling it needs a source that declares a branching FX-Map node beside an export
-that shows what the engine drew. Only **eight permitted sources carry FX-Map node data at
-all**, and two of those declare nothing but `paramset` and compile to *zero* chain nodes,
-so they cannot speak about a node's children. None of the 8 reference packages ships an
-export for an output the affected records feed. So what would settle it is an export for a
-record whose output actually differs — not a further reading of the compiled side, which
-states the slot's existence unambiguously and says nothing about whether it is drawn.
+**Entry extent.** The mask width is `max(slot + width − 1) + 1`: the last field's full width
+counts (a trailing `patternsize` is two words, and `max(slot) + 1` stops on its second
+component). It is exact for 98.94% of entries and one word long for 93 (`0x83000088`,
+`0x91100088`), and no bit separates those (bit 31 is necessary, not sufficient). The
+**self-delimited width** (`Assembly.fx_entry_width`, inline fields only) is the rule:
+resolve program slots in order and stop at the first slot whose own address lies inside a
+program already named (99.23% exact, 0 long). An entry's inline program states its own length (§10), so
+the entry's byte extent ends where that program ends; no stride table is needed
+(FORMAT-NOTES.md, "The FX entry table is a linked list").
 
-**The `0x20008` row is not what its name says.** Those cells are reached as *entries*, not
-through the chain, and the run stops at them because `fx_table`'s layout rule refuses the
-tag: they are `0x00420008` holding their declared program INLINE at slot 3 rather than
-pointing to it. Accepting the inline form has a real containment split — of the words a run
-stops on, **333 of 342 lie inside a program's byte span where the inline arm fails and 0 of
-22 where it passes** — but the 22 cells it admits do not state where they end: 2 land on a
-credited byte, 8 come out of `abuts an fx cell` rather than `fx cell not reached`, and 13
-have their inline program end on no structure at all. Refuted on the extent evidence, not on
-the containment.
+**Out-of-line entries.** An entry's parameter block may sit before its tag, at the address
+slot 1 names:
 
-The earlier reading of this residual, which this paragraph corrects: the 37 were called "a
-nearer forward pointer the max rule drops", which is the symptom rather than the mechanism —
-the dropped word is not a *pointer the step ranked lower* but a *structural word the
-parameter layout never showed the step at all*, and 18 of the 37 are named by a BACKWARD
-pointer that no furthest-forward rule could ever take. "The successor is the pointer that
-abuts the entry's own program" is refuted as before and is not needed: the entry's program
-end is among its pointers in only 6,692 of 23,496 entries and is a nearer pointer than the
-furthest in 2,826, so adopting it would have moved 2,826 successors to recover 37 cells.
+    [ … the tag's own field words … ][tag][slot 1 → the block][slot 2]
 
-**An entry's stated width is `max(slot + width - 1) + 1`, and reading it as `max(slot) + 1`
-is one word short when the last field is wide.** A trailing `patternsize` at bit 25 is two
-words, so the naive span stops on the *second* component of the entry's own last parameter:
-read correctly, all 108 cells of the previous paragraph land exactly on a program start;
-read naively, 54 of them land on a float. **The correction is applied** — an earlier version
-of this paragraph recorded it and deliberately left `walk_partition.stated_extent` alone,
-because `audit_corpus` uses that function as a byte floor and widening a ruler credits bytes
-without decoding any. Measured rather than assumed, that objection does not hold: with the
-correction the corpus residual is 46,616 bytes either way and the audit's alignment-pad
-column moves by one run — 2 bytes — while `walk_partition` reports the same 32 FX violations
-on 200 files with it and without it.
+It is recognised by two statements of one address agreeing: slot 1 names the block, and the
+mask width puts the block's end on the tag word (`block + 4·(width − slot) = tag offset`,
+for the slot the block starts at). Where they agree, 1,749 of 1,749 declared program slots
+resolve; elsewhere 9 of 602. Fields are read at `base + 4·sl`, `base = tag offset − 4·width`
+(mask width, not self-delimited). The cell is yielded at its block. Its step is bounded to
+slots 1 and 2 — past the tag lie the next cell's programs. Its extent runs to `tag + 12`
+when the tag sets bit 16 or 17 (the word at `tag + 8` is then a pointer to a cell, 876 of
+876) and to `tag + 8` otherwise (that word is a record's program, 316 of 316)
+(`Assembly.fx_out_of_line`, `fx_out_of_line_span`; FORMAT-NOTES.md, "`abuts an fx cell` was
+an entry whose parameter block sits out of line" and "3. The word at an out-of-line cell's
+`tag + 8`").
 
-The correction is also confirmed from the data and not only from the mask, by the out-of-line
-cells below: such a cell's parameter block ends exactly on its own tag word only under the
-corrected width, and `0x03520248`'s block ends `[…][1.0][1.0]` — the two components of that
-trailing `patternsize`, which the naive span cuts in half. 101 of 595 cells stop being
-identifiable if the width is put back.
+**Walking the region** (`Record.fx_walk`):
 
-**But the mask does not state the extent exactly, and no bit says where it differs — the
-ENTRY does.** `max(slot + width - 1) + 1` is right for 98.94% of entries and one word too
-long for 93 of them. Measured against the extent the file itself shows, an entry's fields
-ending where the program it names begins:
+1. **Chain run** from the root, node by node (`fx_tree`); a branch queues its second child,
+   and a chain link or pointer cell is yielded and stepped through by its slot 1. The run
+   ends on the first table entry.
+2. **Table run.** Entries form a linked list: the next entry is the furthest-forward pointer
+   among slots `1 … span`, `span` = last layout slot + 1 (1 for an empty layout, 2 for an
+   out-of-line cell). Stop when the next word is a node header (report it), or — from the
+   second entry on — when the tag names program slots and none resolves
+   (`entry_layout_holds`) and the out-of-line identity fails — the test that catches
+   bytecode read as a tag, which a tag-vocabulary test does not (`0x09130008`). Pointer
+   cells met in a run are waypoints, not terminators.
+   Nibble-9/B words met in a run have their programs scanned, capped at the element's stated
+   width (slot-1 step, or `leaf_successor` / `pointer_cell_successor`).
+3. **Both forward pointers.** For a tag with an empty layout, also enqueue as table starts
+   the other forward targets in slots `1 … walk_end − 1` that pass nibble 8 and
+   `entry_layout_holds` (`0x00020018` is `[tag][→ leaf][→ next cell]`, and the step takes
+   the dead-end leaf). Do not widen or move the step instead: that derails `0x00020008` and
+   `0x00010008`, and no tag bit separates them from `0x00020018`.
+4. **Table → chain.** Follow a reported stop header only if its word is a header this
+   record's own chain run already yields (vocabulary frozen before any continuation).
+   Floats such as `0x3E999999` end in `0x99` and would otherwise pass as nodes.
+5. **Once both queues drain**, enqueue: the forward targets of an entry's structural words
+   (bits 4, 7, 16, 17, which the parameter layout drops) and of an out-of-line cell's
+   `tag + 8` word when bit 16 or 17 is set, both gated on the record's frozen entry-tag
+   vocabulary; and, ungated, the payload of a pointer cell met inside a table run
+   (`pointer_cell_payload`, the cell's last slot). Each target must be a nibble-8 word that
+   passes `entry_layout_holds` or the out-of-line identity.
+6. Yield an entry once **per resolving program slot**, as a node is.
 
-| width rule | exact | too long | too short |
-|---|---|---|---|
-| the tag's mask | 31,840 (98.94%) | 93 | 247 |
-| self-delimited | **31,933 (99.23%)** | **0** | 247 |
+Evidence: FORMAT-NOTES.md, "A cell with two forward pointers loses one, so follow both" and
+"The words the parameter layout drops are pointers too".
 
-The 93 are not identified by any bit. Bit 31 is *necessary and not sufficient* — `0xD5140088`
-carries it and is exact at width 9, while `0x83000088` and `0x91100088` carry it and are one
-long — and the bits distinguishing them (18, 26, 30) are co-extensive across the only three
-tags that carry bit 31. **The rule is not a bit: resolve each program slot in order and stop
-at the first slot whose own address lands inside a program already named.** That is the same
-"two statements of one address must agree" discipline the out-of-line cells use, applied to
-the entry's own end, and it is `sbsasm.fx_entry_width`. The 247 short readings are *not*
-width errors: their deltas run to −95 and −123, meaning the nearest forward program is simply
-not adjacent, so the bound is loose rather than the model wrong.
+**Known limits.**
 
-This changes no output today — every consumer of the width already clamps, `walk_partition`
-via `min(span, (nxt - q) // 4)` — so it is the correct model of the extent rather than a
-correction to a reading.
+- `fx_walk` does not follow node spare words (27 of 3,019 over 60 files point at further
+  cells). The tree reading of §13.7 reads them per record.
+- `0x00420008` cells holding their declared program inline at slot 3 are not accepted: the
+  cells that arm admits do not state where they end.
+- About 25 KB of FX bytes corpus-wide stay unlabelled (`fx cell not reached` 20,890,
+  `abuts an fx cell` 4,204; FORMAT-NOTES.md, "The sweep asked a predicate that cannot see an
+  out-of-line cell").
 
-**An entry's parameter block can sit OUT OF LINE, at the address its slot 1 names.** This is
-what `abuts an fx cell` was: 126,206 bytes, 71% of the residual before it was read, in
-records whose own filter has no payload. The cell is
-
-    [ ... the tag's own field words ... ][tag][slot 1 -> the block][slot 2]
-
-and its programs and its block lie *behind* the tag. Slot 1 has the same meaning in the
-ordinary form, where the block is inline: over the 137,552 entries the walk reached before
-this reading existed, slot 1 holds `off + 4 * first parameter slot` in 85.75% and `off + 8`
-in a further 3.24%. Two statements of one address must agree — slot 1 names the block, and
-the tag's mask says how many words the entry holds, so the block ends on the tag word. Where
-they agree, **1,749 of 1,749 program slots the tag declares resolve as programs**; at the
-nibble-8 words in the same byte runs where they do not, 9 of 602 (1.5%), 377 of 386 words
-resolving none. `entry_layout_holds` reads those slots forward and therefore refuses these
-cells, which is why a table run stops dead on one and a chain handoff is declined: 273 of
-the 846 cells in the residual are the exact word a run stopped on, and the other 573 follow
-from them down the cells' own next-pointers. `Assembly.fx_out_of_line` is the identity,
-`fx_table` takes it as a further arm behind the same test that used to stop, and the cell is
-yielded once, at its block. Its step is bounded to slots 1 and 2: past the tag lie the *next*
-cell's programs.
-
-**The word at `tag + 8` is decided by the tag, and the bit is 16 or 17.** This paragraph
-used to leave that word out of the credited extent and say why: it holds the pointer to the
-next cell on most of these cells, but on the rest it is the first word of a program a
-*record* names, "and nothing in the tag separates the two". Something does. Split every
-out-of-line cell the walk reaches on `tag & 0x30000` — the two `FX_STRUCTURAL_BITS` whose
-word is a pointer to a cell, bit 16 four words wide and bit 17 one:
-
-                          cells   the word at `tag + 8`, read as
-                                  a pointer to a cell     a program
-    bit 16 or 17 set              876       876 of 876     0 of 876
-    neither set                   316         0 of 316   316 of 316
-
-Three tests and no cell on the fence in any of them. "A pointer to a cell" is the FX
-vocabulary at `word + 52` — 874 land on an entry tag and 2 on a pointer cell; "a program"
-is `program_span`, the same predicate a record's own slot uses; and the byte audit agrees
-from a third side, with all 876 of the first group uncredited and **313 of the 316** of the
-second already credited as a program body reached from a record's own pointer. So the
-split is not the extent rule's to make — the rest of the file has already made it.
-
-The bit is not chosen by fitting. Bits 4 and 7 also declare a structural word and both
-appear on cells of either kind (bit 4: 204 cells with bit 17 set, 49 without); what tracks
-the trailing word is 16 and 17 alone, on 1,192 of 1,192 cells. The span therefore runs to
-`tag + 12` where the tag sets one of them and to `tag + 8` where it does not, and it is
-still short rather than long wherever the tag says nothing.
-
-**And an entry is yielded once per program slot, as a node is.** `fx_table` yields
-`(offset, tag, program)` per resolving program and `fx_walk`'s skip keyed on the offset
-alone, dropping 189,206 programs on 78,402 entries. It was invisible while every entry held
-its programs inline — the entry's credited extent covered them — and stops being invisible
-the moment a cell's programs lie behind it.
-
-Neither the `FX_TAG_LOW16` vocabulary nor "the tag names a program and one of them resolves"
-identifies these cells on its own: the first admits `0x09130008`, which is 2,322 u32s
-straddling two instructions, and the second rejects `0x00420008`, which names a program at
-slot 3 and in 33 unreached cells over 120 files holds that program INLINE there rather than a
-pointer to it.
-
-Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). **`patternsize` is
-decoded**, and this paragraph used to say it was not. It is named by source containment,
-placed by the entry mask, expressed as a plain `[0,1]` canvas fraction (source-confirmed:
-the permitted FX-Map sources have no Quadrant node, so there is no subdivision to scale
-against), and it resolves deterministically — no unset slot, no unset graph input and no
-evaluation order the reader can get wrong, measured over all 41,153 `fxmaps` records that
-yield a drawable entry table. What is open is the **drawing model** around it, not the
-field: see §13.7. How many patterns a record emits, and where each lands, is §13.7 too.
+**`patternsize`** is decoded: named by source containment, placed by the entry mask, and in
+the units of the cell's region — the canvas at depth 0 (§13.7). It resolves
+deterministically: no unset slot, no unset graph input and no evaluation-order dependence,
+over all 41,153 `fxmaps` records that yield a drawable entry table (FORMAT-NOTES.md,
+"`patternsize`'s setup chain was never out of order"). What is open is the drawing model
+around it, and how many patterns a record emits and where: §13.7.
 
 ---
 
 ## 9. Embedded resources (resource table)
 
-When `base != 0`, the resource segment `[0x38, base+0x38)` holds raw image payloads, and a
-**resource table** sits immediately before the interface block: one 8-byte record per
-image.
+When `base != 0`, the resource segment `[0x38, base + 0x38)` holds raw image payloads, and a
+**resource table** sits immediately before the interface block: one record per image.
 
 ```
 u32 format_tag
-u32 offset            byte offset of the image within the segment (+4)
+u32 offset            the image's file position − 52 (segment position + 4)
 ```
 
-`format_tag` decodes as four bytes: `[3]` format (`01`=L, `02`=RGB, `03`=RGBA, `05`=L16,
-`07`=RGBA16), `[2]` depth (`08`=8-bit, `18`=16-bit), `[1]` = `log2(h)<<4 | log2(w)`
-(`0xAA` = 1024×1024), `[0]` colour flag (`20`=grayscale, `21`=colour). The three fields are
-mutually consistent (bytes-per-pixel = channels × depth). Records sit 8 or 32 bytes apart
-depending on the file, so the table is found by *scanning for valid tags*, not walked at a
-fixed stride. Consecutive offsets give each image's size; the sizes sum to the segment
-length exactly (a strong integrity check). Dimensions resolve for 190/200 images, almost
-all 1024×1024.
+`format_tag` is four bytes: `[3]` format (`01` L, `02` RGB, `03` RGBA, `05` L16, `07` RGBA16),
+`[2]` depth (`08` 8-bit, `18` 16-bit), `[1]` `log2(h) << 4 | log2(w)` (`0xAA` = 1024×1024),
+`[0]` colour flag (`20` grayscale, `21` colour). The fields are mutually consistent
+(bytes-per-pixel = channels × depth). Records sit 8 or 32 bytes apart depending on the file,
+so find the table by scanning for valid tags, not at a fixed stride (FORMAT-NOTES.md, "The
+embedded images decode — confirmed"). Consecutive offsets give each image's size; the sizes
+sum to the segment length exactly.
 
-**A `bitmap` record names its image at `words[1] + 52`** — the same universal `+52` skew a
-record pointer, a ramp table, a vector strip and a `text` record's font pointer all carry,
-and the same one this table's own `offset` field carries. The image runs
-`width × height × channels × depth/8` bytes from there; a JPEG-flagged one (class byte bit
-3) stores `[u32 compressed length][SOI …]` at that offset instead. The far end of the
-segment is the check that fixes the skew rather than merely being consistent with it: over
-the 111 layout-A specimens whose images tile the segment, `max(offset + size)` equals
-`resource_end` **exactly, 111 of 111**, and under the `+4` skew this project used until
-2026-09-03 it undershot by 48 bytes in 111 of 111. At the near end the first image lands on
-0x38 in **122 of the 125** files that carry one.
+**A two-word `bitmap` record names its image at `words[1] + 52`**, the universal skew; when
+`words[1]` is not below the file size it is a graph-input uid instead (§13.6). The longer
+forms (a computed program, a three-word form whose slot 2 is the offset, pixels inline in the
+record) are `Record.bitmap`'s. The image runs `width × height × channels × depth/8` bytes;
+when bit 3 of class byte 1 (`cls >> 8`) is set it is JPEG, `[u32 compressed length][SOI …]`
+at that offset. Check: `max(offset + size)` equals the segment end in 111 of 111 files whose images tile it
+(FORMAT-NOTES.md, "`Grid.sbsasm`'s two 65 KB blobs are images, and the naming record is next
+door").
 
-**The image need not lie in the resource segment, and need not lie in the naming record.**
-Files with `base == 0` have no segment and store images in the record body; there, as
-everywhere, §5's directory is a sorted partition rather than an allocation, so the image
-falls inside whichever record's extent it lands in. `Grid.sbsasm` is the clean case: its
-records 5, 6 and 8 are two-word `[tag][pointer]` bitmaps naming three 256×256 grayscale
-images at 176, 65,720 and 131,328, each `256 × 256` bytes long, each ending exactly on the
-next record's offset — and each lying inside the *previous* record's extent, which belongs
-to a `transformation`, a `bitmap` and a `blend`. A reader must therefore decide the record's
-form from its own header length (§6.1), never from `offset[i+1] − offset[i]`.
+**The image need not lie in the resource segment or in the naming record.** With
+`base == 0` there is no segment and images sit in the record body; §5's directory is a sorted
+partition, so an image falls inside whichever record's extent it lands in (`Grid.sbsasm`
+records 5, 6 and 8 name three 256×256 images each lying inside the previous record). Decide a
+record's form from its own header length (§6.1), never from `offset[i+1] − offset[i]`.
 
-### 9.1 The segment is not images only — filter 17 stores a string and a font in it
+### 9.1 Filter 17 stores a string and a font in the segment
 
-A `text` record's base region is five words, `[w0][w1][zero][string ptr][font ptr]`, and both
-pointers carry the format's universal `+52` skew, so they are ordinary offsets into this
-segment rather than a private encoding.
+A `text` record's base region is `[w0][w1][zero][string ptr][font ptr]`; both pointers carry
+the `+52` skew and address this segment.
 
-**`words[3] + 52` — the string.** `[u32 count][u32 codepoint × count]`, one codepoint per
-word. When `w1` **bit 1** is set the same word is instead the `uid` of a **type-6 (string)
-graph input**, and the manifest's `default=` for that uid carries the text. The discriminator
-is the bit and never the value, because both arms hold an ordinary 32-bit word. Over the
-corpus all 59 text records resolve: 38 through the segment, 21 through a graph input.
+**`words[3] + 52`: the string**, `[u32 count][u32 codepoint × count]`. When `w1` **bit 1** is
+set, `words[3]` is instead the uid of a **type-6 (string) graph input**, and the manifest's
+`default=` for that uid is the text. Decide by the bit, never the value: both arms hold an
+ordinary 32-bit word. All 59 corpus text records resolve (38 segment, 21 graph input).
 
-**`words[4] + 52` — a complete font.** `[u32 hash][u32 length][sfnt]`, where the payload is a
-whole TrueType file (`00 01 00 00` on 13 of 14 distinct payloads, `ttcf` on the 14th). The
-length field is structural rather than inferred: `off + length` lands exactly on an offset
-another record of the same file names as *its* string, on 8 of 14, with no record naming an
-offset one word to either side. It is **per record, not per file** — one package carries two
-faces and its signature record points at the second, which is the one place on it whose
-glyphs are a script face.
+**`words[4] + 52`: a font**, `[u32 hash][u32 length][sfnt]`, a complete TrueType file
+(`00 01 00 00` on 13 of 14 distinct payloads, `ttcf` on the 14th). The length is structural:
+`off + length` lands exactly on another record's string offset on 8 of 14. The font is per
+record, not per file (FORMAT-NOTES.md, "Where the font is").
 
-The compiled record therefore names **no font family anywhere a reader can see**: the family
-exists only inside the payload and in the `.sbs`. Nothing inside the payload has been read
-here beyond those four magic bytes and the stated length. That restraint is a licence
-question about the type foundry, and is deliberately *not* the Adobe provenance rule of §12 —
-the two are separable and are kept separate.
+The compiled record names no font family anywhere outside the payload. Nothing inside the
+payload is read beyond its four magic bytes and stated length. That restraint is a licence
+question about the type foundry, separate from the provenance rule of §12.
 
 ### 9.2 Filter 5 stores vector artwork, and the payload states its own end
 
-A filter-5 record names its payload at `words[1] + 52` — the same universal skew again — and
-the payload is a **self-delimiting chain of primitives**:
+A filter-5 record names its payload at `words[1] + 52`. The payload is a self-delimiting
+chain of primitives:
 
 ```
-u32 kind              0x07FFFFFB, 0x00000003 or 0x04040403
+u32 kind              0x07FFFFFB, 0x00000003 or 0x04040403 (partitioned by class word)
 u32 len               vertex count in `len >> 3`, primitive flag in `len & 7`
 u32 vertex × len>>3   x in the low half, y in the high half, 0..65535 normalised
 ...                   further parts, each `[len][vertices]`; a kind word may restart
@@ -1219,38 +834,30 @@ u32 vertex × len>>3   x in the low half, y in the high half, 0..65535 normalise
 u32 0                 terminator, one word
 ```
 
-so the payload's extent is a walk and not an arithmetic bound. It terminates on the zero
-word in **139 of 139** corpus records. Nothing else states the end: the record's own slot 2
-is its `$outputsize` expression, which the payload merely *abuts*, and the first `len` word
-describes only the first part — `(len + 23) / 2` is the widely quoted formula and equals
-`12 + 4 * (len >> 3)`, that part plus one trailing word, which is the *next* part's `len` or
-the terminator.
+The extent is a walk to the terminator (139 of 139 records; `Record.vector_parts`,
+`vector_extent`). Nothing else states the end: slot 2 is the record's `$outputsize`
+expression, which the payload merely abuts, and `(len + 23) / 2 = 12 + 4·(len >> 3)` covers
+only the first part plus one trailing word. Every end lands on a boundary the file states
+elsewhere (slot 2 in 57 of 57 where it is a usable pointer; FORMAT-NOTES.md, "The payload
+states its own end, and the 141,088 bytes were never a convention").
 
-The landing is the check. Over the 57 records where slot 2 lies inside the record and is a
-pointer rather than the float `0x3F800000`, the terminator lands exactly on it in **57 of
-57**; corpus-wide, all 139 ends land on a boundary the file states elsewhere — slot 2, the
-record's own end, the next filter-5 payload's start, or (once) a `bitmap` record's image
-pointer at §9's `+52`.
-
-`len & 7` selects the primitive and takes two values: **1** is a triangle strip (99.60%
-alternating signed area over 187 parts, 16.71% adjacent repeated vertices — the strip joins)
-and **2** is a **closed contour** (47.98% alternation, 0.38% adjacent repeats, first vertex
-equals last in 37 of 38). A part is never flag 2 first. As everywhere in §5, the payload need
-not lie inside the naming record's extent: 76 of 139 point outside it, and in two specimens
-every payload lies in the resource region ahead of the record body, tiling it end-to-start.
+`len & 7` is **1** for a triangle strip (joins repeat a vertex) or **2** for a **closed
+contour** (first vertex equals last in 37 of 38). A part is never flag 2 first. The payload
+need not lie in the naming record: 76 of 139 point outside it.
 
 ---
 
 ## 10. Instruction stream (the ISA)
 
-Computed parameters are **bytecode programs** reached from record slots. A program is a
-sequence of instructions in a `u16` token stream (little-endian **`(u16 arg, u16 opcode)`**
-words, opcode in the high half).
+Computed parameters are **bytecode programs** reached from record slots. A program is
+`[u16 instruction count][instructions …]` in a little-endian `u16` token stream
+(**`(u16 arg, u16 opcode)`** words, opcode in the high half). Reach programs only through
+record slots; a linear scan of the body decodes junk (`OPCODES.md`, "Decode correctly").
 
 ### 10.1 Encoding
 
-Each instruction is one opcode token followed by its operand tokens (three-address code,
-one result per instruction, contiguous SSA value numbering).
+Each instruction is one opcode token followed by its operand tokens (three-address code, one
+result per instruction, contiguous SSA value numbering).
 
 | bits | field |
 |---|---|
@@ -1259,39 +866,38 @@ one result per instruction, contiguous SSA value numbering).
 | 7–6 | component count − 1 |
 | 5–0 | operation id |
 
-The length rule `length = (opcode >> 10) + 1` holds for **every** opcode in
-`0x0400–0x7FFF`, so any program can be fully tokenised with no semantic table — unknown
-operations are skipped exactly, not guessed past. (Records, `0x8000`+, are exempt: they
-are 4-aligned and separately framed by the directory.)
+`length = (opcode >> 10) + 1` holds for **every** opcode in `0x0400–0x7FFF`, so any program
+tokenises with no semantic table; unknown operations are skipped exactly (`isa.py`). Records
+(`0x8000`+) are exempt: 4-aligned and framed by the directory.
 
 ### 10.2 Operands and immediates
 
-Most operands are value numbers naming an earlier result in the same program. Some are
-immediates: the swizzle mask, variable-slot indices, the index read by `0x03`/`0x06`, and
-the 4-byte immediate of a constant (`0x00`) or an **input reference** (`0x02`). Constants with a 4-byte immediate
-come in two forms differing by `0x0400` (a 2-byte alignment pad).
+Operands are value numbers naming an earlier result in the same program, except these
+immediates (`disasm.IMM`): every operand token of a constant (`0x00`), system variable
+(`0x01`), input reference (`0x02`), cache read (`0x03`) and variable get (`0x04`); position 1
+of `set` (`0x07`, slot), swizzle (`0x10`, packed 2-bit mask) and cache write (`0x06`, index);
+positions 1–6 of the samplers `0x33`/`0x34` (1 = sampler index, 2+ = flags, unread).
+Instructions with a 4-byte immediate come in two forms differing by `0x0400`: the longer
+carries a 2-byte pad, emitted when the instruction lands at 0 mod 4, so the immediate stays
+aligned.
 
-**Inputs are referenced by uid**: a reference opcode is followed by a `u32` input uid, and
-bits 6–7 of the opcode encode component count − 1 (`0x0902/0x0942/0x0982/0x09C2` =
-float1..4; `0x0A02/0x0A42` = int1..2) — a clean 100% mapping over 326,768 references.
-**Outputs are positional**, identified only by index in the interface block's output array;
-they never appear in code.
+**Inputs are referenced by uid**: the reference opcode is followed by a `u32` input uid, and
+bits 6–7 encode component count − 1 (`0x0902/0x0942/0x0982/0x09C2` = float1..4;
+`0x0A02/0x0A42` = int1..2), 100% over 326,768 references. **Outputs are positional**,
+identified only by index in the interface block's output array; they never appear in code.
 
 ### 10.3 Operation set
 
-**41 operations in 63 type-specific forms, all named** (see `OPCODES.md` for the full
-table), covering 96.5% of decoded instructions by operation-id on distinct specimens; the
-residue is component/length variants plus decode noise. Seven further operations — `0x03`,
-`0x0B`, `0x0F`, `0x1E`, `0x2A`, `0x35`, `0x36` — fall below that catalogue's ≥20-specimen
-threshold and are established structurally rather than by frequency; they sit in the same
-table, marked `*`.
-
-The catalogue is grouped by family, by operation id within a family:
+**41 operations in 63 type-specific forms, all named** (`OPCODES.md`), covering 96.5% of
+decoded instructions on distinct specimens. Seven further operations — `0x03`, `0x0B`,
+`0x0F`, `0x1E`, `0x2A`, `0x35`, `0x36` — fall below the catalogue's ≥20-specimen threshold,
+are established structurally, and sit in the same table marked `*`. `0x06`, the write half of
+`0x03`'s cache, also occurs (1,063 writes) and is not tabulated.
 
 | ids | family |
 |---|---|
 | `00`–`02` | values and references — constant, system variable, input reference |
-| `03`, `04`, `07` | variable slots — get, set |
+| `03`, `04`, `06`, `07` | variable slots and the cross-record cache — cache read, get, cache write, set |
 | `09`, `0B`, `0C` | control flow and structure — select/ifelse, `while`, sequence |
 | `0D`, `0F`, `10` | vector construction and access — construct, `vec4`, swizzle |
 | `11` | type conversion — tofloat / toint |
@@ -1304,22 +910,28 @@ The catalogue is grouped by family, by operation id within a family:
 | `30`–`32` | range and noise — min, max, seeded rand |
 | `33`, `34` | sampling — luminance, colour |
 
-Family order follows operation id, with two departures the catalogue also makes: comparison
-comes before boolean logic so the relational operators read as one block, and `0x35`/`0x36`
-group with the transcendentals rather than sitting after the samplers their ids follow. `0x0D` construct
-always takes exactly two operands and concatenates; it and `0x0F` carry a declared `ncomp`
-that is authoritative over their operands' runtime widths. `0x0B` **`while`** is a loop —
-operands `(init, cond, body, …)`, no immediate — and its operands name expression trees
-re-evaluated per iteration, so it is the one instruction a straight-line translation gets
-wrong. The compiler performs common-subexpression elimination and inlines sub-graph
-instances, so instruction counts can be far below authored node counts.
+Families follow operation id, except that comparison precedes boolean logic and `0x35`/`0x36`
+group with the transcendentals.
+
+- `0x0D` construct always takes exactly two operands and concatenates. It and `0x0F` carry a
+  declared `ncomp` that is authoritative over their operands' runtime widths.
+- `0x0B` **`while`** is a loop, operands `(init, cond, body, …)`, no immediate. Its operands
+  name expression trees re-evaluated per iteration, so it is the one instruction a
+  straight-line translation gets wrong. In the 5-operand form operand 1 may be `0xFFFF`, the
+  absent-operand sentinel (164 instances): what bounds such a loop is not established, and
+  `transpile.py` refuses it.
+- `0x03`/`0x06` are cross-record common-subexpression elimination: a never-sampled
+  `pixelprocessor` record writes a value at an index, and later records read it (FORMAT-NOTES.md,
+  "`0x03`/`0x06` are cross-record common-subexpression elimination").
+- The compiler performs common-subexpression elimination and inlines sub-graph instances, so
+  instruction counts can be far below authored node counts.
 
 ### 10.4 System variables
 
 `0x01` reads a system variable by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`,
 8 `$pos`, 10 `$number` (FX-Map only).
 
-`$pos` means **two different things** depending on which program reads it — the sampling
+`$pos` means **two different things** depending on the reading program: the sampling
 coordinate in a `pixelprocessor`, the node's own base position in an FX-Map. Supplying the
 first where the second is meant renders nothing. See §13.5.
 
@@ -1327,60 +939,67 @@ first where the second is meant renders nothing. See §13.5.
 
 ## 11. Interface block
 
-One per package, a footer immediately after the value table:
+One per package, immediately after the value table, ending at the end of the file:
 
 ```
 [value table][u16 n_out][u16 n_in][output uid array][input descriptor array][16-byte footer]
 ```
 
-It aggregates every graph in a multi-graph package. `validate_corpus.py` confirms
-`(n_out, n_in)`, both uid arrays, the footer, and the record directory on 383/383 specimens.
+Output uids are `u32`; each input descriptor is 8 bytes, `u32 type, u32 uid`. The footer is
+the file's last 16 bytes, `(count, dir_start − 52, dir_end − 52, table_start − 52)` (§4), immediately after the
+input descriptor array. The value table, walked with the widths its descriptor types imply, ends
+exactly on the `n_out`/`n_in` word (`tools/standalone_parse.py`). The block aggregates every graph in a multi-graph package.
+`archive/tools/validate_corpus.py` confirms `(n_out, n_in)`, both uid arrays, the footer and
+the record directory on 383/383 specimens (FORMAT-NOTES.md, "Byte coverage, and the curve
+tables").
 
 ---
 
 ## 12. Provenance and scope
 
-This specification was produced clean-room: no Adobe Substance engine binary was run,
-disassembled, or inspected, and any source file bearing `<author v="Allegorithmic">` was
-excluded from analysis. That exclusion is now a predicate rather than a habit —
-`corpus.sources()` returns only permitted `.sbs` paths and `corpus.source_excluded()` checks
-one, and every tool that reads a source goes through them. It was enforced by nothing until
-a reading of FX-Map `$pos` was taken from an excluded file and had to be withdrawn; **131 of
-the 491 sources here bear the tag**, and for FX-Maps specifically they are the whole of the
-interesting population, so a negative measured over the permitted sources means "absent from
-what may be examined" and never "absent from the format".
+This specification is clean-room: no Adobe Substance engine binary was run, disassembled or
+inspected, and any source file bearing `<author v="Allegorithmic">` is excluded from analysis.
+The exclusion is a predicate: `corpus.sources()` returns only permitted `.sbs` paths,
+`corpus.source_excluded()` checks one, and every tool that reads a source goes through them.
+131 of the 491 sources bear the tag, and for FX-Maps they are the whole of the interesting
+population, so a negative measured over the permitted sources means "absent from what may be
+examined", never "absent from the format".
 
-**A permitted source is not ground truth unless its DEPENDENCY CLOSURE is also permitted.**
-The predicate classifies the file it is handed; a `.sbs` declares `<dependency>` entries, and
-`sbs://…` names a graph from the shipped library, which is excluded and whose nodes are
-nevertheless compiled into the package. `Simulator__Grid.sbs` is permitted, declares three
-dependencies of which two are `sbs://`, and holds 3 `fxmaps` filter nodes against its
-compiled sibling's 6 — so half the compiled records have no declaration that may be read. A
-declared-vs-decoded comparison over such a pair cannot separate "we decoded it wrong" from
-"that node came from a dependency", and one was withdrawn on exactly that ground. Pair only
-against a source whose dependencies are all permitted, or compare per-node rather than as
-multisets. The format's *structure* is fully recovered — a reader can locate
-and walk every region above from the file alone. What remains open is *semantics*: the
-meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
-provenance-walled specifics (e.g. filter 5's NAME — its layout is in the legend and its
-payload decodes — and inline FX parameter names).
+**A permitted source is ground truth only if its dependency closure is also permitted.** The
+predicate classifies the file it is handed; `sbs://…` dependencies name shipped library
+graphs, which are excluded but compiled into the package. `Simulator__Grid.sbs` is permitted,
+declares two `sbs://` dependencies, and holds 3 `fxmaps` nodes against its compiled
+sibling's 6. Pair only against a source whose dependencies are all permitted, or compare per
+node rather than as multisets (FORMAT-NOTES.md, "SPEC: where the format is read as individual
+bits", "WITHDRAWN: the Grid declared-vs-decoded comparison").
 
-Rendering is no longer wholly open. §13 states a renderer completely enough to rebuild
-one, and on the corpus specimen whose two graph inputs are `$outputsize` and `$randomseed`
-— so that a colour mismatch cannot be an author's tweak before export — it reproduces all
-six declared outputs against the package's own exported maps at r = +0.98 / +0.95 / +0.91
-(basecolor), +0.96 (roughness), +0.97 (ambient occlusion) and a height mean of 0.7859
-against 0.78628. What is not solved is generality: §13.6 names three filters that run at
-defaults for want of a name-legend row, §13.7 names the footprint, and §13.8 names three
-values the file does not contain at all.
+The format's *structure* is recovered: a reader can locate and walk every region above from
+the file alone (residuals: §8 known limits). What remains open is *semantics*: the meaning of
+some filter parameters, the FX-Map drawing model (§13.7), and provenance-walled specifics —
+filter 5's name (its layout is in the legend and its payload decodes), filter 9, and inline FX
+parameter names.
+
+§13 specifies a renderer. On the corpus specimen whose only graph inputs are `$outputsize`
+and `$randomseed` (so a colour mismatch cannot be an author's tweak before export) it
+reproduced all six declared outputs against the package's own exports at r = +0.98 / +0.95 /
++0.91 (basecolor), +0.96 (roughness), +0.97 (ambient occlusion), and a height mean of 0.7859
+against 0.78628 (FORMAT-NOTES.md, "A renderer where every structural read comes from the
+walk, and Rokviz renders"). Generality is open: §13.8 lists the node defaults the file does not
+contain, and §13.7 the FX-Map drawing readings that are still arms.
 
 ---
 
 ## 13. Evaluating a graph — the renderer
 
-Sections 1–12 are enough to *read* a file. This section is what a reader needs to *run*
-one: `tools/render2/` is written from it and nothing else. Where a value is not in the
-file it says so (§13.8); everything else is derived from the sections above.
+Sections 1–12 are enough to *read* a file; this section is what a reader needs to *run* one.
+The renderer of record is `tools/render2/`: `engine.py` (the pass, record sizes,
+`$outputsize`), `model.py` (the name legend and the per-record `View`), `filters.py` and
+`text.py` (filters), `ops.py` (program runner, samplers, blend modes), `fx.py`, `fxtree.py`
+and `fxchain.py` (FX-Maps). Values the file does not state are §13.8.
+
+Readings the file does not settle are arms of `assume.QUESTIONS` (`tools/assume.py`). The
+**effective** reading is the default at the call site, `assume.assumed("key", default)`;
+where this section names an arm it names that default, and other arms exist for comparison.
 
 ### 13.1 Filter ids
 
@@ -1391,85 +1010,116 @@ file it says so (§13.8); everything else is derived from the sections above.
 17 text     18 normal   19 dyngradient   20 pixelprocessor        21 distance  22 curve
 ```
 
-Ids 5, 9 and 17 are not evaluated: 5 and 9 are provenance-walled (§12), 17 is a glyph
-source. The other twenty are §13.6.
+Every id but 9 is evaluated. §13.6 gives the semantics of all of them except 17 (`fxmaps`
+through §13.7). `text` (17) is `render2/text.py`: the string and the embedded font sit in the
+resource segment (§9.1), and every `text` record is marked low-confidence, because the ink
+colour, the size of a record that states none, and the glyph face (a substitute) are not in
+the file. Id 9 has no implementation.
 
 ### 13.2 The pass
 
 **What a record is drawn at.** Its own tag, two nibbles: `width = 1 << ((tag >> 8) & 0xF)`,
-`height = 1 << ((tag >> 12) & 0xF)`. One exception, and it is stated by a class bit rather
-than guessed: on `bitmap` records class bit 13 (`word0 & 0x20000000`) is a 4×-**area** flag
-the height nibble omits — 11 records across the corpus set it and all 11 store an image
-exactly four times their declared area, against 0 false positives on ~570 bitmaps with the
-bit clear, so `height` gains a factor of 4. Without it a decoder reads the top quarter of
-each.
+`height = 1 << ((tag >> 12) & 0xF)`. One exception, which a class bit states: on `bitmap`
+records, `word0 & 0x20000000` (class bit 13) is a 4×-**area** flag that the height nibble
+omits, so `height` gains a factor of 4. All 11 corpus records that set it store exactly
+four times their declared area, and none of ~570 with the bit clear does. Without the flag a
+decoder reads only the top quarter of each image (FORMAT-NOTES.md, "A confirmed bitmap
+under-declaration: 11 images decoded at 1/4 height").
 
-**And the tag is that size at ONE `$outputsize`, which is the graph input the manifest
-declares a default for — one input PER GRAPH, not one per file.** The record's real size is the program at its size slot (§13.3),
-evaluated at whatever `$outputsize` the graph is being run at; the tag caches its value at
-the manifest's default. A reader rendering at that default may use the tag and will be
-right — over 437 files the size programs reproduce it — but a reader rendering at any other
-output size must evaluate the programs, and **must not scale the tag uniformly**. They do
-not move together: of `ChesterfieldSofa`'s 746 size expressions, 674 add the whole shift,
-45 ignore `$outputsize` entirely (an absolute-size pyramid stage), 5 add a third of it, 5
-two thirds, and one shifts width only. Trust an expression only where it reproduces the tag
-at the file's own declared `$outputsize` — 718 of 746 do, and where it does not the slot has
-been misidentified and its answer at any other size is worth nothing. A record with no size
-expression takes its parent's size **relatively**, scaling its tag by the factor the parent
-moved, not copying the parent's new size.
+**The tag is the size at the declared `$outputsize`.** `$outputsize` is a graph input (the
+manifest identifier `$outputsize`, type 8, `(log2 w, log2 h)`). A record's real size is
+the program at its size slot (§13.3), evaluated at the `$outputsize` the graph is being run
+at, and the tag caches that value at the manifest's default. At the default the tag is the
+answer. At any other `$outputsize` (`engine.record_sizes`):
 
-**A PACKAGE DECLARES ONE `$outputsize` PER GRAPH AND THEY ARE NOT INTERCHANGEABLE.** A
-single-graph file has one and the distinction never arises, which is how a reader comes to
-assume it. `Kutejnikov__Bricks_and_tiles` declares **five** inputs whose manifest identifier
-is `$outputsize` — 1530875923, 3258319273, 3039899967, 727032988, 1548915722, every one with
-default `(8,8)` — and `Kutejnikov__Auras` four, *the same first four uids in the same order*,
-so these are per-graph-slot identifiers rather than file-specific ones. A record's size
-expression reads the uid of the graph it belongs to. Set only the first and every other
-graph stays at its declared size no matter what is asked for: of Bricks' 12,585 records,
-2,342 move when the first uid is set against **11,943** when all five are, and graphs 002–005
-are pinned at 256 while their exported maps are 1024. Of 10 specimen assemblies 3 are
-multi-graph; all 99 `corpus/` assemblies are single-graph, which is why a census taken over
-the corpus is unaffected by this and a reference score is not. `engine.outputsize_uids`
-returns them all; `assume.QUESTIONS['graph.outputsize']` carries the two readings.
+- Evaluate the size program with every `$outputsize` uid set to the requested value. Trust
+  it only where, evaluated at the declared default, it reproduces the tag with every log2 in
+  0–16. Otherwise the slot is misidentified, and its answer at other sizes is worthless.
+- A record with no trusted size program takes its parent's size **relatively**: it scales
+  its tag by the factor its input moved (the largest over its inputs), and does not copy
+  the parent's new size. A record with neither a program nor an input (`bitmap`, `uniform`)
+  keeps its tag.
+- **Never scale the tags uniformly.** Size expressions do not move together. In
+  `ChesterfieldSofa`, 674 of 746 add the whole shift, 45 ignore `$outputsize` (fixed-size
+  pyramid stages), 5 add a third of the shift, 5 two thirds, and 1 shifts width only
+  (FORMAT-NOTES.md, "Why "just multiply the tag by 8" is wrong").
+- If the graph declares no `$outputsize`, or no default for it, every record keeps its tag
+  and no program's `$outputsize` is overridden.
 
-A SECOND TRAP SITS BESIDE IT, and it belongs to the reader rather than the format: a
-"render at most N pixels" sweep is **not** a scaled-down render. A cap applied per record
-(`min(w, N)`) while each record's programs still read their own **declared** size computes
-every `$size`-derived pixel parameter for the big canvas and applies it in the small buffer.
-On a 1024-canvas graph drawn into a 256 buffer, 1,167 of one output's 1,277 records clamp and
-the result is not a coarser picture but a different one — quadrant-scale smear that lands in
-the lowest octave (1–7 cycles at six times the export's power) while pulling the mean toward
-mid-grey, so it can read as a *level improvement* while destroying structure. Render at the
-canvas size and resample down; the two differ by +0.65 against +0.85 in correlation on the
-same output. See FORMAT-NOTES.md, "The blocker dissolves".
+The tag also sets the unit of the pixel-valued intensities of `warp`, `dirmotionblur` and
+`directionalwarp`: they are in the pixels of the tag width, whatever size the record renders
+at (`warp.reference_px = tag`; see §13.6).
 
-This is not a resolution knob. `$outputsize` is read by ordinary programs, so changing it
-changes the graph: on `ChesterfieldSofa` 98 of 102 `switch` blends take their selector from
-a program comparing `$sizelog2` against a constant, a mip pyramid in which octave K switches
-in once the output is big enough. Comparing a render at one `$outputsize` against an export
-at another compares two different graphs, and every reference pack in this corpus ships maps
-at a size its own file does not declare.
+**A package declares one `$outputsize` per graph.** A multi-graph package declares one input
+with identifier `$outputsize` per graph, all with the same default. Their uids are
+per-graph-slot identifiers, not per-file ones: `Kutejnikov__Bricks_and_tiles` declares five
+and `Kutejnikov__Auras` four, and the first four are the same uids in the same order. A
+record's size expression reads the uid of its own graph, so a reader must set every one.
+`engine.outputsize_uids` returns all of them in manifest order, and the renderer sets each to
+the requested size (`graph.outputsize = pergraph`). The `first` arm sets only the first uid,
+which pins every other graph at its declared size. On single-graph files the two arms are
+identical (FORMAT-NOTES.md, "ROOT CAUSE: a multi-graph package has ONE `$outputsize` INPUT
+PER GRAPH").
 
-**Which records are outputs.** An 8-byte entry per declared output sits between the record
-directory (§5) and the first record — one entry per output on 591 of 591 layout-A
-specimens. Word 1 is the **record index** (a valid one in 3,249 of 3,249); word 0's low
-half `>> 4` is the manifest's `format` attribute, and bit 2 of that is a grayscale flag
-(98.5% grayscale when set against 4.2% when clear, over outputs whose identifier names
-them). An entry whose high half is 2 — 48 of 3,249 — is a numeric **value** output rather
-than an image, and all 48 name a `pixelprocessor`. This is the attribution earlier notes
-called structurally absent; it is not absent, it is in a region nothing had read.
+**`$outputsize` changes the graph, not only its resolution.** Record sizes feed `$size` and
+`$sizelog2`, which ordinary programs read. In `ChesterfieldSofa`, 98 of 102 `switch` blends
+take their selector from a program that compares `$sizelog2` against a constant: a mip
+pyramid whose octave k switches in once the output is large enough. A render at one
+`$outputsize` compared with an export at another compares two different graphs. Every
+reference pack in this corpus ships maps at a size its own file does not declare, so score
+at the size the export implies. `engine.implied_outputsize` reads it from power-of-two map
+dimensions and returns `None` when a pack's maps disagree (FORMAT-NOTES.md, "Every
+reference pack in this corpus was exported at an `$outputsize` its own file does not
+declare").
 
-Every edge is a **backward** record index (§6.3), so one forward pass in index order
-suffices — no topological sort. Each record produces an `(H, W, C)` image, `C` = 1 when
-word0 bit 0 is clear and 4 when set. A record whose input has no output yet fails as a
-*cascade* (a consequence); everything else is a *root* failure, and the distinction is
-what makes a blocker census meaningful.
+Score a derivative channel (`normal`, and the `height` it derives from) at its own
+resolution or not at all. Resampled down, a map with no spatial agreement can still score
+high on a handful of unique values, which the scorer flags `DEGENERATE` (FORMAT-NOTES.md, "`normal` in full: three named fields, a per-256-pixel slope,
+and two causes for four threads").
 
-Conform each result to the record's own channel count, and refuse rather than invent:
-3 channels on a colour record is RGB and gains an opaque alpha; a greyscale record whose
-channels are identical is narrowed; anything else means the wrong program ran. Clamp only
-**declared outputs** to [0, 1] — an intermediate above 1 is headroom a later multiply may
-legitimately consume.
+**A pixel cap is not a scaled-down render.** The caller's cap (`max_dim`, `View.size(cap)`)
+clamps each record's grid independently, while its programs still read the record's
+declared size. Every `$size`-derived pixel parameter is therefore computed for the full
+canvas and applied in the small buffer, and the result is a different picture, not a
+coarser one. Render at the canvas size and resample down (FORMAT-NOTES.md, "The blocker
+dissolves").
+
+**Which records are outputs.** Between the record directory (§5) and the first record there
+is one 8-byte entry per declared output. Word 1 is the output's **record index**. If word
+0's high half is 2, the entry is a numeric **value** output rather than an image: its low
+half is the manifest type, and the record it names is a `pixelprocessor`. Otherwise
+`format = (word0 & 0xFFFF) >> 4`, which is the manifest's `format` attribute, and bit 2 of
+`format` is the grayscale flag. That flag is read from the output table alone
+(FORMAT-NOTES.md, "Correction: the output table exists, and it was never hidden"; "The last
+output-table entries are numeric value outputs").
+
+**Order.** Every edge is a **backward** record index (§6.3), so one forward pass in index
+order suffices; no topological sort is needed. Each record produces an `(H, W, C)` image,
+with `C` = 1 when word0 bit 0 is clear and 4 when it is set. A record the walk does not
+cover, or whose filter has no implementation, is refused. It is never read from raw slots.
+
+**Failures.** A failure is a *cascade* when it is only a consequence: an input edge whose
+record has no output, or a program read through a sampler nothing binds (an unwired image
+input). Every other failure is a *root*. Root causes are `failures − cascaded`, and that
+distinction is what makes a blocker census meaningful.
+
+**Conform each result to the record's channel count, and refuse rather than invent**
+(`ops.conform`):
+
+- A colour record returning 3 channels is RGB and gains an opaque alpha. One returning 1
+  channel has that channel replicated to four.
+- A greyscale record returning several identical channels is narrowed. If the channels
+  differ, it takes the first component (`greyscale.wide = first`, whose `refuse` arm treats
+  it as the wrong program). These records are cache writers, and their picture is a
+  by-product of the side effect.
+- Anything else is refused: a channel count that disagrees with the record's colour flag
+  means the wrong program ran.
+
+Non-finite samples become 0, and the record is marked low-confidence
+(`nonfinite.fill = 0.0`). Results pass between records as float32
+(`engine.bitdepth = float`); the per-output depth flag, word0 bit 20 (§13.4), is not
+applied. After the pass, clamp **declared image outputs** to [0, 1] and nothing else: an
+intermediate above 1 is headroom that a later multiply may legitimately consume.
 
 ### 13.3 Reading a record's parameters
 
@@ -1479,116 +1129,71 @@ Three questions, three answers, and only the third needs the header length:
 |---|---|---|
 | which parameters are present, baked or program? | the `w1` two-bit state | §7.4, the file |
 | how wide is each baked one? | Float1/2/4, per-channel by the colour bit | §7.3, the file |
-| where does the block start? | `header_end − Σ widths`, laid **forwards in ascending mask order** (except filter 17 `text` — §6.1, §13.4) | the width legend's header length only |
+| where does the block start? | `header_end − Σ widths`, laid **forwards in legend order**: ascending mask order everywhere except filter 17 `text` (§6.1, §13.4) | the width legend's header length only |
 
-**Anchor at the end, not at the walk's forward cursor.** The cursor inherits any slot a
-model mis-charges *before* the parameters; the end anchor is wrong only if the header
-*length* is wrong, and the length is the one quantity a fit to observed boundaries
-reproduces exactly whatever it does to the attribution. `normal` is the case that separates
-them: a five-word header whose intensity is word 4, where the cursor said 6. Under §7.3's
-width legend the two agree by construction — the base is `n_hdr + n_base + n_fixed`, three
-counts the record states, and the forward cursor lands on the stated length in 903,301 of
-903,301 corpus records — so the distinction is a check rather than a repair. Keep it: the
-day it fires is the day a width is wrong.
+**Anchor at the end, not at the walk's forward cursor.** The cursor inherits any slot that
+was mis-charged *before* the parameters. The end anchor is wrong only if the header
+*length* is wrong. Under §7.3's width legend the two coincide: the base is
+`n_hdr + n_base + n_fixed`, and the cursor lands on the stated length in 903,301 of 903,301
+corpus records. The end anchor stays as the check that fires when a width is wrong.
 
-**Check it.** Two slots can never hold a parameter, and neither answer comes from the
-fitted per-field charge: an **input edge** (§6.3) and the two mask words. A block reaching
-either means the name legend below is missing a field that sits after a listed one — the
-whole block has shifted onto words that read as plausible floats. Refuse loudly. Silent on
-84,700 records carrying named parameters: 0 reach either.
+**Check it** (`model.Shifted`). Refuse the record when:
 
-**The size slot is the one the class walk PLACES**, not the first slot of the class block.
-Bit 16 is the lowest class bit but not always the first placed: a flag bit below it takes a
-word first. Over 120 files the two answers differ on 7,590 records — `pixelprocessor` by one
-slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
+- the block would start on a mask word, or on or before an input-edge slot (§6.3); or
+- the header end runs past the record's words; or
+- two present `w1` fields share one name. These are relocation arms (see `blend`, §13.4),
+  and only one is ever set.
 
-**And the class walk itself must not be run in plain ascending order (§6.1).** When class bits
-16 and 23 are both set the size expression is the SECOND class slot; the first holds
-`$randomseed`. 102,173 corpus records across 19 filters are affected — `pixelprocessor`
-56,055, `fxmaps` 36,028, `transformation` 5,324, `blend` 2,445, `levels` 401, and fourteen
-more down to `hsl` 3. The tell that a reader has this wrong is that its size slot resolves a
-program returning one component, which no size expression does.
+Any of these means the name legend is missing a field that sits after a listed one, and the
+whole block has shifted onto words that read as plausible floats. The check is silent on
+84,700 records that carry named parameters.
 
-The walk reports it as `size_slot`, so a reader never reconstructs it. Two filters still
-have no placement to report, for different reasons, and one has nothing to place.
+**The base region is structural.** It is the mask words plus the base image inputs:
+`2 + arity` words, or `1 + arity` for a filter with no `w1` word. It is never a fitted
+intercept, and it agrees with the fitted intercept on 321,054 of 321,054 interaction records.
 
-**`emboss` was a VERSION story, and it is fixed.** `derive_costs` admits a class bit only
-when it varies among the headers it can observe, and its population for filter 8 starts at v5
-(`MIN_VERSION`). Bit 16 is set on every emboss record in v5, v6 and v9 (256, 87 and 32 of
-each) and clear only in v2 (6 records) and v4 (4) — exactly the versions the cut excludes. So
-the bit was constant by the gate, not by the format, and its word sat folded into a fitted
-intercept of `4.5`.
+**The size slot is the slot the class walk places for bit 16**, which `decompose` reports as
+`size_slot`. It is not the first slot of the class block (`prog`). The class block emits
+bits below 24 in ascending order with bit 16 **last**, then bits 24–31 in ascending order
+(§6.1). So when bit 23 (`$randomseed`) is also set, the seed takes the first class slot and
+the size expression the second. That applies to 102,173 corpus records across 19 filters
+(`pixelprocessor` 56,055 and `fxmaps` 36,028 the largest); over 120 files `prog` and
+`size_slot` differ on 7,590 records (FORMAT-NOTES.md, "The fourth class-block walk, and one
+loop instead of four"). A size slot that resolves a one-component program is the tell of an
+ascending-order walk: no size expression returns one component.
 
-The repair is the general rule: **identify a feature where it varies, apply it where it does
-not.** The derivation now fits the excluded population too — not to ship its spec, whose
-exactness is below the bar, but to read coefficients off it — and transfers a constant bit's
-cost into the modern spec when, and only when, **every filter that can see that bit agrees on
-it**. Bit 16 is charged 1.0 by all 20 such filters, so it transfers; bit 27 is charged 1.0 by
-eight and 0.0 by two, so it is a per-filter fact and may not be borrowed. Without that second
-test both moved, and the walk's cursor went from one word short of the fitted length to one
-word long.
-
-**Bit 27 is now MEASURED here rather than borrowed**, by pinning the intercept instead of
-leaving it free. With `const` fixed at the record's own base region — 2 mask words + 2 image
-inputs, plus the one word bit 16's transfer accounts for — a constant class bit can be given a
-column of its own, where under a free intercept that column *is* the constant. `emboss` bit 27
-comes out at 1.0, which is what eight other filters charge it and what its slot holds: the
-`sysvar…exp2` `$pixelsize` program, at slot 5 of `sci_fi_elements_02` record 3807. `const`
-comes out at the structural 4, where the free fit gave the half 3.5 — a half being the model
-conceding it cannot express the rule.
-
-**Under §7.3's width legend the same three bits come out the same way, by a route worth
-stating because it needs no separate mechanism.** With the base pinned for every filter, bits
-16, 19 and 27 are set on all 375 records the gate admits, so the solve sees only their SUM,
-2. Bit 16 is 1 by the same format-wide agreement (every population whose records vary in it
-charges 1, 35 of them) and bit 19 is charged by nobody anywhere — it is set on 903,608 of
-903,616 corpus records and varies in no filter's population at all — so **the residual
-determines bit 27 at 1**, and the closure is the check. Resolving one blind column at a time
-and re-testing identifiability after each is what makes that work: pinning all three from
-outside instead, which a first attempt did, leaves a word for the free columns to absorb and
-`emboss` comes back at 0.008 exact with class bit 23 charged two words.
-
-The transfer is prediction-preserving by construction — the bit is set on every record of the
-population, so a word leaving the intercept and arriving on the bit cancels — and measured:
-`header_words` is identical on all 546 emboss records. What changes is that the walk now
-PLACES the word: `size_slot` comes from the class walk on all 375 walkable records, the last
-caller-side guess is deleted, and the walk's own cursor matches the fitted header length on
-**375 of 375**, where before the pin it matched 366 and before the transfer none. A further
-171 records the walk still declines on the `min_version` gate. Corpus-wide the cursor now
-equals the fitted length on every covered record of every filter, with no exceptions.
-
-A second, independent thing had to be right for that to work. The fitted intercept was
-answering two questions at once — how many words the masks and edges take, and where the
-class block starts — and they are the same number only by arithmetic accident. Taking a word
-out of the intercept deleted an EDGE from every emboss record until the base region was
-derived from masks-plus-arity instead: `2 + arity` (`1 + arity` where the filter has no `w1`
-word) agrees with the intercept on 321,054 of 321,054 interaction records, so separating them
-changed nothing and made the transfer safe.
-
-**`fxmaps`** used to be in the same position and is not: walking the class block from the
-first slot after the inputs puts bit 16 there in 36,057 of 36,057 records — the walk's own
-answer, formerly not emitted. Its fixed prefix (the FX tree root, §8) sits BEFORE the arity
-run rather than after it, which is one of the two positions the legend has to state per
-filter; the other is `pixelprocessor`'s own program, which comes after the class block. Its
-`end` is the header length like every other filter's, and its `prog` is the
-first-after-inputs slot — two numbers, not one, which is what it used to return.
-
-**`vectorshape`** used to have no legend entry at all, and `decompose` returned a stub
-"with no size slot and no class parameters — nothing to place, and nothing to fall back
-to". The second half of that was a guess: 127 of its 139 records set class bit 16, and the
-slot the ordinary class walk puts at position 2 holds the record's `$outputsize`
-expression on 127 of 127 (§6.1). It is an ordinary legend entry now — `base 0`, `fixed 1`,
-`cls {16: 1, 25: 1}` — and the stub is gone.
-
-**The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
-base region is the record's output-size expression, not a parameter. Clear ⇒ there is no
-size slot and that position is the first parameter. Reading it unconditionally is how a
+**Class bit 16 clear ⇒ no size slot.** Do not read one. Reading it unconditionally is how a
 `blur` whose 3-word header is `[tag][edge][intensity]` reports its intensity as its size.
+If the size slot coincides with a slot the `w1` parameter block owns, keep the parameter,
+drop the size slot and report it under `ignored` (§13.4). This does not fire on the corpus.
+
+**Per-filter placement** (all reported by the walk; no caller reconstructs a slot):
+
+- `emboss`: class bit 16 costs 1 word, bit 27 1 word and bit 19 none, over a base of 2 mask
+  words and 2 image inputs. The 171 records below the legend's `min_version` gate (v5) are
+  declined. Where a class bit is constant within a filter's population, it
+  takes the cost that every population varying in it agrees on (bit 16: 1 word in all). A
+  bit on which populations disagree (bit 27) is measured per filter with the base pinned
+  (FORMAT-NOTES.md, "1. `emboss`: the version gate was the FIT's, and the records it hid are
+  the evidence").
+- `fxmaps`: its fixed prefix, the FX tree root (§8), is slot 2, *before* the inputs. The
+  class block starts at the first slot after the inputs, and `prog` is that slot. `end` is
+  the header length, as for every filter.
+- `pixelprocessor`: its own image program is the **last** header word, after the class
+  block (§6.1, §13.6).
+- `vectorshape`: legend `base 0`, `fixed 1`, `cls {16: 1, 25: 1}`. On 127 of its 139 records
+  class bit 16 is set, and in 127 of 127 the slot at position 2 holds the `$outputsize`
+  expression (FORMAT-NOTES.md, "4. `vectorshape`: it was never a layout the file does not
+  state").
 
 ### 13.4 The name legend
 
-The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presence mask;
-`kind` is the baked width. A `program` arm is one pointer whatever its kind.
+This is the one table the file does not state (§7.3). It is `render2.model.W1_PARAMS` and
+`CLS_NAMES`. `(mask, shift)` is §7.4's presence mask, and `kind` is the baked width. A
+`program` arm is one pointer, whatever its kind. A field begins at its own bit, so match
+`3 << shift`, never an index on an even `(2j, 2j+1)` grid. `transformation`'s offset (bits
+25–26) and `blend`'s relocated opacity (bits 9–10) begin at odd bits. An even grid splits
+each of them into two phantom half-fields whose states swap meaning.
 
 **Own parameters (`w1`)**
 
@@ -1602,236 +1207,149 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 2 transformation | backgroundcolour | `0x10000000` | 28 | per-channel |
 | 2 transformation | *(a halving count — an INTEGER, not a two-bit field)* | `0x0000001F` | 0 | 0 words at 0-13, 29 and 31, one pointer at 30, REFUSED at 14-28 (§7.4) |
 | 2 transformation | *(unnamed)* | `0x00000020` | 5 | flag, 0 words in every state |
+| 4 fxmaps | background | `0x003` | 0 | per-channel |
+| 4 fxmaps | hurst | `0x00C` | 2 | scalar |
+| 4 fxmaps | opacitymult | `0x030` | 4 | scalar |
+| 4 fxmaps | *(unnamed)* | `0x0C0` | 6 | Float4 |
+| 4 fxmaps | *(unnamed)* | `0x300` | 8 | never baked in the corpus; charged 1 |
 | 11 dirmotionblur | intensity / mblurangle | `0x0003` / `0x000C` | 0 / 2 | scalar |
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
 | 15 levels | *(unnamed)* | `0x0C00` | 10 | flag, 0 words in every state |
-| 18 normal | intensity | `0x0003` | 0 | scalar |
-| 21 distance | *(the mask input's declaration — not a parameter)* | `0x0003` | 0 | — |
-| 21 distance | distance | `0x000C` | 2 | scalar |
-| 18 normal | inversedy | `0x000C` | 2 | flag |
-| 18 normal | input2alpha | `0x0030` | 4 | flag |
 | 17 text | matrix22 | `0x0C00` | 10 | Float4 |
 | 17 text | position | `0x00C0` | 6 | Float2 |
 | 17 text | fontsize | `0x0300` | 8 | scalar |
 | 17 text | align_flag | `0x3000` | 12 | flag, 0 words in every state |
+| 18 normal | intensity | `0x0003` | 0 | scalar |
+| 18 normal | inversedy | `0x000C` | 2 | flag |
+| 18 normal | input2alpha | `0x0030` | 4 | flag |
+| 21 distance | *(the mask input's declaration — not a parameter)* | `0x0003` | 0 | — |
+| 21 distance | distance | `0x000C` | 2 | scalar |
 
-**Filter 17's rows are written in block order, and that order is not ascending** — the one
-exception to §6.1. `matrix22` (bit 10) comes first, then `position` (bit 6), then `fontsize`
-(bit 8). The discriminator is not a preference: ascending order puts `fontsize` on the
-matrix's `c` component and is **unrenderable on 14 of 14** records, while this order yields
-diagonal matrices in five files, an exact rotation matrix in `Speed Limit`, and a layout that
-reads — SPEED at y −0.22 above LIMIT at −0.03. The off-diagonals are *not* uniformly zero: a
-first reading claimed they were and the test written to assert it failed at 3 of 14 (0.0033,
-0.0033, −0.627).
+A `flag` is **zero words baked and one word as a program**, because the mask state is the
+value. Declare both arms, or the end-anchored placement shifts.
 
-`align_flag` is charged zero words in **every** state, so its mask state is its whole value
-and declaring it shifts nothing. Its program arm (bit 13) is charged zero words too and is
-unobserved across 437 files; a reader that charges it one word would shift the whole block,
-so a file setting bit 13 is a thing to examine rather than to trust.
+**Filter 17's rows are in block order, which is not ascending**, the one exception to §6.1
+in a `w1` block. `matrix22` (bit 10) comes first, then `position` (bit 6), then `fontsize`
+(bit 8), and the reader walks the list in this order rather than sorting it. Ascending order
+puts `fontsize` on the matrix's `c` component and cannot be rendered on any of the 14
+records that bake all three. This order yields diagonal matrices in five files, an exact
+rotation in `Speed Limit`, and a layout that reads. The off-diagonals are not uniformly zero
+(FORMAT-NOTES.md, "The parameters, and the one place the walk's general rule does not
+hold"). `align_flag` costs zero words in **every** state, its program arm (bit 13)
+included. That arm is unobserved in 437 files, so treat a file that sets bit 13 as
+something to examine, not to trust.
 
-Two of these begin at an **odd** bit — `transformation`'s offset at (25, 26) and `blend`'s
-relocated opacity at (9, 10). Under a reader that imposes an even grid `j → (2j, 2j+1)` they
-STRADDLE it, their two states swap meaning between adjacent fields, and each appears as two
-phantom half-fields, one that can only ever read `10` and one that can only ever read `01`.
-That is the reader's frame and not the format's: a field begins at its own bit (§7.4), so
-both match `3 << b` like every other, and `param_slots` reports them under bits 25 and 9
-carrying the ordinary states. The `STRADDLED` relabelling table that used to put the halves
-back together is gone with the grid that split them. A reader working from raw `w1` should
-still match the **mask** rather than any index it has invented.
+**`blend` states its opacity at one of two masks.** Connecting the node's `opacity` input
+sets the field at bits (4, 5) to state 11 (the image-input code, §7.3) and moves the slider
+to bits (9, 10). Both are `opacitymult`, and the two are exclusive, so a reader gives them
+one name. `ChesterfieldSofa.sbs` (3 of 3) and `SandyStonePath.sbs` (5 of 5, program arm
+included) place their stated values at (9, 10). Over the corpus, the (9, 10) field reads
+`01` on 963 records, every one a plain float in [0, 1], and `10` on 170, every one a
+program (FORMAT-NOTES.md, "`blend`'s opacity moves when its mask port is connected, and the
+walk now states it").
 
-**`blend` states its opacity at one of two masks.** Connect the node's `opacity` input and
-the field at (4, 5) goes to state 11 — the image-input code, §7.3 — and the slider moves to
-(9, 10). Both are the same parameter: in `ChesterfieldSofa.sbs` exactly three blend nodes
-have both a connected `opacity` port and a stated `opacitymult` (0.73, 0.40, 0.20), and
-exactly three compiled records set (9, 10), holding those three floats; `SandyStonePath.sbs`
-agrees five for five, program arm included. The two arms are exclusive by construction —
-one two-bit code cannot read both 01 and 10 — so a reader may give them one name.
+**`normal`'s three fields are named by the program arm's operand.** A program arm opens
+with `inputref` on a graph input, and the manifest names graph inputs. Field 0's 275
+programs return float1 from inputs such as `normal_intensity` (`intensity`). Field 1's 38
+return a boolean `<input> == 1` from inputs such as `normal_format` (`inversedy`). Field 2's
+one program returns a boolean from `Alpha_Channel_Content` (`input2alpha`). The renderer
+reads `inversedy` (`normal.inversedy = field1`). A reader that charges field 1's program arm
+no word reads its pointer as `intensity` (FORMAT-NOTES.md, "`normal` in full: three named
+fields, a per-256-pixel slope, and two causes for four threads").
 
-What (4, 5) reads under a set (9, 10) depends on which arm it is, and an earlier revision of
-this paragraph had it as state 11 in all 1,133 cases. Corpus-wide it splits: **963 baked-arm
-records read 11 at (4, 5) and the 170 program-arm records read 01.** The arms are told apart
-by their VALUES with no exceptions in 437 files — every one of the 963 holds a plain float in
-[0, 1] and resolves no program; not one of the 170 is a plain float and all 170 resolve a
-program. That value split is also what pins the offset: read on an even grid the 170
-pointers are denormals, 1.9e-39, which is an opacity of zero and a blend that composites
-nothing.
+**`levels` order is `(low, high, mid)`**, not the UI's `(low, mid, high)`. Over a corpus
+sample, `in_low <= in_high` holds on 3,684 of 3,703 records under this order and on 641 of
+751 under the other (FORMAT-NOTES.md, "render2 becomes the renderer of record, and how it
+was built").
 
-**The class block ends exactly where the header ends, and a reader whose block runs past it
-has mis-attributed a width, not found a longer header.** This was got wrong here, and the
-shape of the error is worth stating because any reader fitting slot costs to observed header
-LENGTHS can reproduce it. A header is `base + the cost of each set bit`, where the base is
-the record's own structure — one or two mask words plus the filter's base image inputs. Fit
-that equation with the base left FREE and the total still comes out right while the split
-between base and bits does not: the fit is at liberty to shave words off the base and charge
-them to a bit that happens to be set in every record. Nothing that compares lengths can see
-it. A reader walking the same table FORWARDS from the real base then places the class block
-too far right and runs past the end — on 7,119 records here (`shuffle` 3,514, `dyngradient`
-2,214, `normal` 1,391), with the size expression landing two slots late on `normal` and one
-on `dyngradient`, and on ~1,000 `normal` records landing on the slot the end-anchored
-parameter block owns. `distance` ran its own parameter past the end on 2,360 more, for a
-second reason on top of this one: its optional mask input was charged twice, once as the
-edge it is and once as a `w1` field.
-
-Pinning the base to what the record states and re-solving for the bit costs is exact on
-every record of all three filters, needs no negative or half-word coefficient, and leaves
-every header length unchanged. **That is now the whole model rather than a repair of four
-entries** (§7.3): the base is pinned for every filter, every cell is one kind from
-`0 1 2 4 C`, and 688 fitted numeric cells became 109 kinds over 110 cells with no intercept
-to shave. The two answer the identical header length on 903,276 of 903,301 records — the
-population the FIT can answer, since the legend declines 5 records and the fit 315 (§6.4) —
-and the walks they drive agree slot for slot on 903,440 of 903,440 on
-`inputs`, `cls_slots`, `cls_params`, `hdr`, `prog`, `size_slot` and `root`. `end` and
-`param_slots` part on 25 records and nowhere else — `transformation`'s integer field (§7.4),
-the one gap the legend closed and the fit did not.
-Three things confirm the new placement rather than merely being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
-the 3,640 records where it moved, against 281 at the old position; `ChesterfieldSofa.sbs`'s
-declared `intensity` 10.0 lands on the `w1` field the legend names, where it used to land on
-the slot the walk called class bit 16; and the two independent placements — the forward
-class walk and the end-anchored parameter block — now agree instead of colliding.
-
-**What the corrected attribution says about the format.** `distance`'s `w1` field 0 is the
-mask input's declaration and its field 1 is the radius, set out with its evidence in the
-`distance` paragraph further down this section. **`normal`'s and `dyngradient`'s
-over-charged bits were the record's own SIZE**: word0 bits 8–11 and 12–15 are the log2 width
-and height (§6.2), and the fit — which offers every bit of word0 as a feature — charged a
-word to bits 10, 11, 14 and 15, which are bits 2 and 3 of those two nibbles. It stayed
-invisible because within log2 4…11 exactly one of bits 2, 3 is set in each nibble, so the
-over-charge was a constant +2, and no `normal` or `dyngradient` record in the corpus is
-outside that range. It is not invisible outside it: under the old table the same `normal`
-record reads a **10-word header at 4096×4096 and a 6-word one at 8×8**, where its parameters
-have not moved at all. Under the corrected table it reads 8 at every size, which is what a
-header whose contents do not depend on the canvas must do. And `shuffle` has two
-cost tables, one per record shape (§6.4): the one-channel shape bakes four `channelsweights`
-words at bit 24 and carries no `w1`, the four-channel shape packs its per-channel selector
-into `w1` and bakes nothing, so bit 24 costs 4 words in the first and 0 in the second. One
-additive table cannot hold both without a negative coefficient, which is exactly what the
-free-intercept fit produced.
-
-**A reader should say what it declines to read.** An unnamed field is not an error — the
-walk places it, so the layout is right — but it is invisible in a way an error is not: the
-name resolves to a default, the default is the neutral value, and the record renders. `hsl`
-was an identity in 747 corpus records and `sharpen` in 1,156 on exactly that mechanism.
-Report per record the fields the walk placed and the legend does not name, as its own count
-rather than folded into the assumed-value one: the two mean opposite things, and 57,731
-`pixelprocessor` records carrying an unnamed class pointer would drown the other. Those
-57,731 are not unnamed any more — the pointer is `$randomseed`, and the pixel program is the
-LAST header word rather than the first slot after the inputs (§6.1) — but the accounting
-point stands.
-
-**A `flag` is zero words baked and one word as a program**, and both arms have to be
-declared or the placement shifts. `normal`'s fields 1 and 2 cost nothing when baked — the
-mask state IS the value — so omitting them looks free, but their program arm is a pointer:
-38 corpus records put a program in field 1 while `intensity` is also a program, and an
-end-anchored reader charging one width instead of two reads field 1's pointer as
-`intensity`. Those 38 records ran the wrong program, and it evaluates to 0 on every one of
-them — a flat normal where the file says 5, 10, 15, 20.
-
-All three of `normal`'s fields are named, and what names them is **the program arm's
-operand**, not a frequency asymmetry. A program arm here opens with `inputref` on a graph
-input, and the `.sbsar` manifest names graph inputs. Over the corpus, resolving every one:
-field 0's 275 programs return float1 in 275 of 275 and read inputs named `normal_intensity`
-(205), `Normal` (18), `normal_strength` (13), `intensity` (6) …; field 1's 38 return a
-BOOLEAN in 38 of 38, all of the shape `<input> == 1`, reading `normal_format` (34),
-`generated_normal_format`, `NormalFormat`, `Format` and `normal_inverseDirection`; field 2's
-one program returns a boolean read straight off an input named `Alpha_Channel_Content`. So
-field 0 is `intensity`, field 1 is `inversedy` and field 2 is `input2alpha`. The return types
-say the same thing without the names — float1 against boolean — and are why the two boolean
-fields cost zero words baked: the mask state IS the value. A second witness, source-side:
-`SBRustyTreadPlate.sbs` writes four normal nodes at intensity 6 / 15 / 3 / 10 and states
-`inversedy 1` on exactly the intensity-15 one; its compiled twin's five records hold 15.0,
-12.8, 3.0, 6.0 and 10.0, and the one carrying a field-1 flag is the 15.0 one. Reading any of
-these as a single BIT rather than a two-bit code sees the baked arm and calls the program arm
-absent.
-
-The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over a corpus
-sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the
-other.
-
-**`levels` has a SIXTH field and it is left unnamed deliberately.** Field 5, mask `0x0C00`,
-costs zero words in every state, so its mask state is its whole value — the same shape as
-`text`'s `align_flag` and `normal`'s two booleans. It is set on 455 of 85,820 corpus records
-and always in state 1, never 2, so it never takes the program form. It is listed here because
-a reader that does not know it exists cannot report it, not because anything here can say what
-it means: no permitted source declares a sixth `levels` parameter. What the file does say about
-its population is structural and has a control. Among records baking exactly one named
-parameter, that parameter being `leveloutlow` or `levelouthigh` at 0.5, a record with field 5
-set has a partner in the same file reading the same input edge and baking the complementary
-out-parameter at 0.5 in **436 of 440**; a record of that identical shape with field 5 clear has
-one in **0 of 4,916**. The partner sets field 5 in 436 of 436. So within this corpus the field
-marks membership of a complementary midpoint split pair — a signal cut into its upper and lower
-halves — and marks nothing else. Its records are also fed by `pixelprocessor` in 45.7% of cases
-against 0.16% for that matched control, the one filter whose output has no reason to lie in
-[0, 1]. Naming it would change 0 of 85,820 readings, because it consumes no word.
+**`levels` field 5** (`0x0C00`) costs zero words in every state and is left unnamed. It is
+set on 455 of 85,820 records, always in state 1, and within the corpus it marks one half of
+a complementary midpoint split pair (436 of 440, against 0 of 4,916 in a matched control).
+No permitted source declares a sixth `levels` parameter (FORMAT-NOTES.md, "`levels` has a
+SIXTH w1 field, and it marks a midpoint SPLIT PAIR").
 
 **`transformation`'s low `w1` bits are one integer and one flag, and neither is named.**
-§7.4 sets out why bits 0-4 cannot be two-bit fields and what the integer is: over the 4,192
-records reading 0..13 with a resolvable input, `own log2 = max(input log2 − k, 0)` on 84.1%
-(99.47% where the input is a `levels` record) against 25.3% for the same law at `k = 0`. It
-is described and not named: the value 31 is carried by 98.2% of the filter, no permitted
-source reaches any value but the default, and a name would have to come from knowing what
-the engine calls a halving count rather than from anything the file says.
+Bits 0–4 hold a halving count (§7.4), unnamed (`transformation.w1low = ignore`). The
+halving law holds on 3,408 of 3,667 records (92.9%) that carry a `$outputsize` expression,
+but only on 222 of 525 (42.3%) that do not. Codes 12, 13 and 29 occur only on records with
+class bit 16 clear (77 records), and 12 and 13 state a constant canvas (32×32 and 16×16)
+whatever their input. Neither
+source nor manifest names it: 73 permitted source nodes pinned to their compiled records
+all compile to `w1 & 0x3f = 0b111111`, whatever `tiling` they state, which refutes `tiling`.
+The manifest has no pointer to read in the field's ordinary states, and the pointer arm at
+value 30 opens on `sysvar 3`, not on an `inputref` (FORMAT-NOTES.md, "The source arbiter is
+silent here, and its silence is now measured").
 
-The law has a condition worth stating with it, because it is where the unexplained codes
-live: over the same 4,192 records it holds on **3,408 of 3,667 (92.9%)** where the record
-carries a `$outputsize` expression (class bit 16) and on **222 of 525 (42.3%)** where it does
-not. Codes 12, 13 and 29 are set on no record that carries one — 77 records, class bit 16
-clear on 77 — and their own canvas is a constant independent of their input (32×32 at 12,
-16×16 at 13). So a `transformation` with no size expression states a canvas the halving law
-does not predict, and the 84.1% is a figure about the arm that has one. §7.4 states what
-follows for code 29, which lives entirely in that arm.
+Bit 5 is a separate one-bit flag, associated at about 2.5:1 with the direction of the
+scale in the record's own `matrix22` (det > 1 against det < 1). That is an association, not a
+partition, and bit 4 moves neither (FORMAT-NOTES.md, "Bit 5 is separate, and bit 4 is what
+says so").
 
-The source arbiter is silent here and its silence is measured, not assumed. Pinning
-`transformation` nodes in permitted paired sources to compiled records by their stated
-`matrix22`/`offset` constants — 73 nodes uniquely matched across 16 packages — every one
-lands on `w1 & 0x3f = 0b111111`, the modal code: `tiling` 0 (9 packages), `tiling` 2 (1) and
-`tiling` unstated (9) alike. Two different stated values cannot compile to identical bits if
-those bits are the value, so `tiling` is refuted; but the same run reaches no other code at
-all, so nothing source-side can name what the codes ARE. The manifest is silent for a
-structural reason rather than a lexical one: a field charged zero words in its ordinary
-states has no pointer slot, so there is no program to read an `inputref` out of. The one
-arm that does have a pointer is the 25 records at value 30, and their program opens on
-`sysvar 3` rather than on an `inputref`, so it names nothing either.
+**`distance`'s field 0 declares the optional mask INPUT, and field 1 is the radius.** Field
+0 costs a word in states `01` and `11` and none in `10`, a cost that tracks bit 0 alone. Bit
+0 set gives two edges and clear gives one, on 2,277 of 2,277 records (§6.3). Field 0 is an
+edge, so it is not charged in the end-anchored block. Charging it begins the block one slot
+late. Field 1's two arms are the ordinary pair, and all 188 of its program arms decode.
+`SandyStonePath.sbs` states radii 56.2999992 and 64.2200012, and compiled records 3 and 180
+hold exactly those (FORMAT-NOTES.md, "The other half of `distance`: the cost model was
+paying for its mask input twice"; "A baked radius read as an address, and the 1,581 records
+behind it").
 
-**Bit 5 is not part of the integer**, and what separates them is that bit 4 does not behave
-like its partner. Read as a two-bit field at (4, 5) its states `10` and `11` should mean
-different things; on the determinant of the record's own baked `matrix22` they behave alike
-and state `01` is the one that differs — bit 5 set gives det > 1 on 55.8% and det < 1 on
-23.7% (n = 26,459), bit 5 clear gives det < 1 on 58.4% and det > 1 on 27.5% (n = 40,049),
-and bit 4 moves neither. So bit 5 is a one-bit flag associating with the direction of the
-scale at about 2.5:1 — an association, not a partition, and it names nothing.
-`assume.QUESTIONS['transformation.w1low']` carries this.
+**The class block ends exactly where the header ends.** A block that runs past the end has
+mis-attributed a width. It has not found a longer header. Word0 bits 8–15 are the log2 size
+nibbles (§6.2) and gate no word. A table that charges them gives one `normal` record a
+10-word header at 4096×4096 and a 6-word header at 8×8. A header whose contents do not depend
+on the canvas must have the same length at every size. `shuffle` needs two cost tables, one
+per record shape (§6.4): bit 24 costs 4 words in the one-channel shape and 0 in the
+four-channel shape (FORMAT-NOTES.md, "A fitted header LENGTH does not give you a header
+LAYOUT, and the intercept was eating the base region"; "H4 survives, and it is the largest
+result: the five cost-model modes are ONE mechanism").
+
+**A reader should say what it declines to read.** An unnamed field is not an error, because
+the walk places it and the layout is right. But its name resolves to a default, the default
+is the neutral value, and the record renders, so the omission is invisible. `engine.render`
+reports per record, under `info["ignored"]`:
+
+- class parameters with no `CLS_NAMES` entry, except bit 16;
+- `w1` fields of one word or more with no name;
+- size-slot clashes (§13.3).
+
+`low_confidence` means the opposite, "a value the file does not record was assumed", so
+keep the two counts apart. `$randomseed` (bit 23) and `$pixelsize` (bits 26/27) have names
+but no reader, so they appear under `ignored` on every record that sets them
+(FORMAT-NOTES.md, "`ignored`: every warp states a bit-27 field we do not name, and
+$randomseed is bit 23"). Other unnamed fields, each read as `ignore`, are `blend` `w1` bit 8
+(a zero-cost flag, `blend.w1bit8`) and `emboss`'s `w1` field at bit 1 (`emboss.w1field0`).
 
 **Inherited parameters (class word).** These class bits are shared rather than per-filter,
-and a reader handles them once. Only bits 16 and 23 are universal — the high half is a
-per-filter parameter list from bit 24 up, and four filters — `uniform`, `hsl`, `shuffle` and
-`dyngradient` — put their own parameters at 24–27 (below).
+and a reader handles them once. Only bits 16 and 23 are universal. The high half, from bit
+24 up, is a per-filter parameter list, and four filters (`uniform`, `hsl`, `shuffle` and
+`dyngradient`) put their own parameters at bits 24–27 (see the next table).
 
 | word0 bit | gates | cost | notes |
 |---|---|---|---|
-| 16 | `$outputsize` | 1 word | the size expression (§13.3). **Emitted after bit 23**, not before — §6.1 |
-| 19 | *(unnamed)* | 0 words | set on 903,608 of 903,616 corpus records. Clear **iff the class word is exactly `0x0080`**, an exact partition; the 8 exceptions are `pixelprocessor` value nodes — 1×1, read by nothing, whose one class slot writes a scalar to the program cache. Not the OR of the other bits: a class word of `0x0008` (bit 19 alone) occurs on 114 records |
-| 20 | the output's **format bit 4** | 0 words | over the 2,455 records a graph output names, format bit 4 is set on 94.67% when bit 20 is set and 0.60% when it is clear; within the 156 files whose own outputs disagree on bit 20 the two agree on 1,185 of 1,222 (97.0%). Format bit 4 separates two encodings of the same content — a depth flag by inference, since no manifest attribute states an output's bit depth |
-| 21 | the output's **format bit 6** | 0 words | 98.46% when set (n=65) against 0.00% when clear (n=2,390). Format bit 6 is carried by formats 64 and 76 |
+| 16 | `$outputsize` | 1 word | the size expression (§13.3), a program returning a 2-component integer. **Emitted after bit 23** (§6.1) |
+| 19 | *(unnamed)* | 0 words | set on 903,608 of 903,616 corpus records. The 8 records with it clear are exactly those whose class word is `0x0080`: `pixelprocessor` value nodes (1×1, read by nothing, whose one class slot writes a scalar to the program cache). It is not the OR of the other bits: class word `0x0008` (bit 19 alone) occurs on 114 records |
+| 20 | the output's **format bit 4**, a 16-bit depth flag | 0 words | over the 2,455 records a graph output names, format bit 4 is set on 94.67% when bit 20 is set and on 0.60% when it is clear. On all 42 greyscale outputs with a paired export, bit 20 set ↔ the export is 16-bit (FORMAT-NOTES.md, "Class bits 19, 20 and 21: two of the three were answered eight thousand lines ago"; "CORRECTION to `d3bad15`") |
+| 21 | the output's **format bit 6** | 0 words | set on 98.46% of outputs when bit 21 is set (n=65) and on 0.00% when clear (n=2,390). Format bit 6 is carried by formats 64 and 76 |
 | 23 | `$randomseed` | 1 word | a program pointer returning a 1-component integer. **Emitted first** |
-| 24, 25 | the filter's **sampling class** | 0 words | 0 for the pixel-local filters, 3 for the ones that read a neighbourhood; redundant with the filter id on 96.8% of records. `uniform`, `hsl`, `shuffle` and `dyngradient` put their own parameters at these bits instead, and are the only filters that charge a word for them |
-| 26, 27 | `$pixelsize` | 2 words baked / 1 word program | an adjacent pair, lower baked and upper a pointer, **mutually exclusive on 124,388 of 124,388** records across `warp`, `blur`, `dirmotionblur`, `directionalwarp`, `distance`, `normal` and `sharpen`. The program arm reads a graph input the manifest identifies literally as `$pixelsize` (type 1, float2) on 7,000+ records and is otherwise a six-instruction `sysvar…exp2` computing a size ratio; the baked arm is a float2 — `blur` bakes an equal pair at a power of two on 5,150 of 5,159. `hsl` and `dyngradient` use the same two bits for their own parameters |
+| 24, 25 | the filter's **sampling class** | 0 words | 0 for the pixel-local filters, 3 for those that read a neighbourhood; redundant with the filter id on 96.8% of records (FORMAT-NOTES.md, "cls bits 8 and 9 encode the filter's sampling class"). `uniform`, `hsl`, `shuffle` and `dyngradient` put their own parameters at these bits instead, and are the only filters that charge a word for them |
+| 26, 27 | `$pixelsize` | 2 words baked / 1 word program | an adjacent pair, lower baked and upper a pointer, **mutually exclusive on 124,388 of 124,388** records across `warp`, `blur`, `dirmotionblur`, `directionalwarp`, `distance`, `normal` and `sharpen`. The program arm reads the graph input the manifest names `$pixelsize` (type 1, float2), or is a six-instruction `sysvar…exp2` size ratio. The baked arm is a float2 (FORMAT-NOTES.md, "Class bits 26 and 27 are `$pixelsize`, and they are a baked/program pair"). `hsl` and `dyngradient` use these two bits for their own parameters |
 
 Bits 19, 20, 21, 24 and 25 have no cell in any filter's width legend, so they gate no stored
-value and a reader that ignores them places nothing wrongly. Bits 20, 21, 24 and 25 describe
-what the record PRODUCES rather than how its header is laid out, which is why probes against
-the record's own geometry came back negative. Bit 19 is still unnamed.
+value, and a reader that ignores them places nothing wrongly.
 
-**Bits 16 and 23 are named by the manifest, not inferred.** Both slots hold a program whose
-first instruction is an `inputref` on a graph input uid, and the `.sbsar` manifest declares each
-uid's `identifier` and `type`. Across every record setting both bits the bit-16 slot resolves a
-**type 4** (int1) input on 46,124 records and the bit-23 slot a **type 8** (int2) on 45,632 —
-`$randomseed` and `$outputsize` respectively, read off the manifest by uid. `fur_var_001`
-declares `uid="4057753226" identifier="$randomseed" type="4"` and
+**Bits 16 and 23 are named by the manifest.** Both slots hold a program whose first
+instruction is an `inputref` on a graph-input uid, and the manifest declares each uid's
+`identifier` and `type`. The first class slot (bit 23) reads a **type 4** (int1) input named
+`$randomseed`. The second (bit 16) reads a **type 8** (int2) input named `$outputsize`. For
+example, `fur_var_001` declares `uid="4057753226" identifier="$randomseed" type="4"` and
 `uid="2796450008" identifier="$outputsize" type="8" default="8,8"`, and its `levels` record 20
-puts the first in the earlier class slot and the second in the later one.
+reads them in that slot order (FORMAT-NOTES.md, "Class bit 23 is `$randomseed`, and the class
+block is NOT in ascending bit order").
 
-The per-filter bits are an adjacent bit pair, lower = baked, upper = program:
+The per-filter bits form an adjacent pair, the lower bit baked and the upper a program:
 
 | filter | parameter | word0 bits | width |
 |---|---|---|---|
@@ -1844,296 +1362,190 @@ The per-filter bits are an adjacent bit pair, lower = baked, upper = program:
 | 14 hsl | saturation | 26 baked, 27 program | 1 |
 | 14 hsl | luminosity | 28 baked, 29 program | 1 |
 
-`uniform`'s bit 25 is named the same way bits 16 and 23 are: on all 653 records that set it
-the slot's program opens with an `inputref` on a graph input the manifest names `color`,
-`metallic`, `rough`, `metallic_strength` or `roughness_strength`. `render2.model.CLS_NAMES`
-carries bit 24 only, so the renderer finds this program with a value probe rather than by
-name. `dyngradient` carries an unnamed pair of the same shape at 25 baked / 26 program — the
-baked arm is 0.5 on 86 of 95 records and the program arm reads inputs named for a gradient
-position — described but not named, `assume.QUESTIONS['dyngradient.gradpos']`.
-
-`distance`'s radius is the source's own: `SandyStonePath.sbs` states 56.2999992 and
-64.2200012 on its two distance nodes and records 3 and 180 of the compiled twin hold exactly
-those. **That witness pins a SLOT, not a field**, and the difference cost this specification
-a wrong reading for a while: on those two records the two candidate fields sit on the same
-word, because the reader was charging `distance`'s optional mask input twice — once as the
-edge it is, once as `w1` field 0 — and so began the parameter block one slot late.
-
-**Field 0 is not a parameter. Its low bit declares the optional mask INPUT**, and that is
-what its costs say: one word in states `01` and `11`, none in `10`. A cost that tracks bit 0
-alone rather than baked-versus-program is not a parameter's; a parameter costs a word for its
-value and a word for a pointer. Across the five `w1` codes the corpus holds, bit 0 set (5, 7,
-9) gives two edges and clear (6, 10) gives one, 2,277 of 2,277. **The radius is field 1**,
-whose two states are the ordinary pair.
-
-The file arbitrates the difference outright. Over 2,411 corpus `distance` records, naming
-field 1 yields 1,720 plausible baked radii, 509 baked zeros and 188 programs — and **all 188
-decode as programs**. Naming field 0 yielded 638 "programs" whose slot does not decode (a
-baked `12.8` read as an address), 105 "radii" that are denormals (a pointer read as a float),
-3 records whose parameter block could not be placed at all, and 87 with no parameter found.
-
-`sharpen` sits at the same pair as `blur`, on weaker evidence: no shipped source states a
-sharpen parameter at all (all 28 nodes are at defaults), so this rests on the pair shape —
-bit 28 holds an ordinary float on 1,148 corpus records (median 0.25) and bit 29 holds
-integers on 8 — and on the position being the one the other one-scalar filter uses. Of the
-1,148 stated values, **1.0 never appears**, which is consistent with 1 being the node
-default this table assumes when the field is absent; that is an argument from an absence and
-`blur`, whose modal baked intensity IS 1.0 at 10,200 records, is the standing reminder that
-such an argument can be wrong.
-
-`hsl`'s three come from the shipped sources: `ChesterfieldSofa.sbs` states `saturation`
-0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on another, and the compiled
-records set bit 26 to 0.65 / 0.58 and bit 28 to 0.60; `SandyStonePath.sbs` states
-`saturation` 0.525 and its record sets bit 26 to 0.525. A node with all three dynamic
-compiles to bits 25, 27, 29 in that order, which is what names the unpaired lower bit
-`hue`. Corpus-wide the even bits hold floats in [0,1] clustered on the neutral 0.5 (bit 24
-n=93 median 0.49, bit 26 n=203 median 0.43, bit 28 n=297 median 0.475) and the odd bits
-hold integers, which is what a program pointer looks like read as a float.
-
-**`$outputsize` is a graph INPUT, and a record's size is the default baked through it.**
-The size in a record's tag (§6) is what the graph resolves to at the manifest's declared
-`$outputsize` default — `Rokviz` declares `8,8`, so its output records read 256×256 — and an
-exporter that sets `12,12` renders the same graph at 4096×4096. A reader that takes the tag
-as the only size therefore renders one parameterization and cannot render the other, and a
-cap like `max_dim` only lowers it. Scale-free channels are unaffected (`Rokviz`'s basecolor
-correlates +0.98 against a 4096 export) but anything measured in pixels is not: the same
-graph's normal map is flat at 256 and has slopes of std 0.211 at 4096, and its mean Z —
-which is invariant under downsampling, so no resampling can reconcile it — is 1.0 against
-the export's 0.899.
-
-Resolution bounds that comparison but does not explain that particular render. Rokviz's
-height is a near-Nyquist weave at 4096: its exported per-pixel gradient sd is 0.0457 there
-and 0.00093 box-averaged to 256, a factor of 49 rather than the 16 a scale-free field would
-give, so no 256-px render can carry its relief. What actually flattens ours is one filter
-earlier — our `height` for this specimen correlates **−0.01** with the export at native 256
-(against **+0.95** for Chesterfield, same measurement, same code path) while its amplitude
-and mean are close. A normal map is a derivative; a derivative of the right statistics with
-the wrong pixels averages to nothing. Score a derivative channel at its own resolution or
-not at all: resampled to 64 the same pair reads `+0.94` and carries a `DEGENERATE` flag.
+- **`uniform` bit 25** is named the way bits 16 and 23 are: on all 653 records that set it,
+  the program opens with an `inputref` on an input named `color`, `metallic`, `rough`,
+  `metallic_strength` or `roughness_strength`. `CLS_NAMES` carries bit 24 only, so the
+  renderer finds this program with a value probe over the walk-named program slots.
+- **`dyngradient` bits 25/26** are an unnamed pair of the same shape. The baked arm is 0.5
+  on 86 of 95 records, and the program arm reads inputs named for a gradient position
+  (`dyngradient.gradpos = ignore`).
+- **`sharpen`** rests on the pair shape alone, because no shipped source states a sharpen
+  parameter (all 28 nodes are at defaults). Bit 28 holds an ordinary float on 1,148 corpus
+  records (median 0.25), and bit 29 holds integers on 8. The position is the one `blur`, the
+  other one-scalar filter, uses. 1.0 never appears among the 1,148 values, which fits 1 as
+  the default for an absent field. That is an argument from absence (§13.8).
+- **`hsl`** comes from shipped sources. `ChesterfieldSofa.sbs` states `saturation` 0.65 with
+  `luminosity` 0.60 on one node and `saturation` 0.58 on another; its compiled records set
+  bit 26 to 0.65 and 0.58 and bit 28 to 0.60. `SandyStonePath.sbs` states `saturation`
+  0.525, which is at bit 26. A node with all three parameters dynamic compiles to bits 25,
+  27 and 29 in that order, which makes the unpaired lower bit `hue`. Corpus-wide, the even
+  bits hold floats in [0, 1] clustered on the neutral 0.5, and the odd bits hold pointers.
 
 ### 13.5 Running a program
 
-`$size` is the **record's declared size**, always — the size its own size expression
-(§7) gives at the `$outputsize` the graph is being evaluated at, and a caller's preview
-*cap* must not reach it. `$pos` is the grid actually being drawn on. Reset both on every
-call: a program evaluated with neither supplied must not inherit the last record's, which
-is an order-dependent cross-record leak.
+**`$size` is the record's own size, always**: the size its size expression (§13.2) gives at
+the `$outputsize` the graph is being evaluated at, which is the tag at the default. A
+caller's preview cap never reaches it. **`$pos` is the grid being drawn on.** Set `$size`,
+`$pos` and `$number` (= 0) on every call (`ops.run_program`). A program evaluated with none
+supplied must not inherit the previous record's values, which would be an order-dependent
+cross-record leak. An unset `$pos` reads as 0. The one population whose `$size` is the drawn
+grid rather than the record's size is a `pixelprocessor`'s own image program (see below).
 
-**`$outputsize` IS NOT A SYSTEM VARIABLE AND MUST BE OVERRIDDEN WHEREVER IT IS READ.** It
-is a graph INPUT, reached by `inputref` on the manifest uid (§13.2), so it arrives through
-the interface block's value table rather than through `sysvar`. A renderer that overrides
-it for size expressions and lets every other program read the interface block's *default*
-is evaluating one graph at two output sizes at once, and the failure is silent and
-selective: only a program that reads `$outputsize` for something other than a size can
-show it. One does — an HBAO gradient LUT whose scale is `height_depth × $outputsize` in
-pixels, compensating a horizon slope its own chain measures per pixel — and it came out
-short by exactly the ratio of the two sizes. Over the eight reference assemblies **no
-non-size program reads the uid directly**; this one reaches it through a slot its own size
-expression writes as a side effect (`exp2($outputsize)` into slot 0), which is why a census
-of direct readers reports nothing and the defect is still real. See FORMAT-NOTES.md, "The
-discriminator is not in `$size` at all".
+**`$outputsize` is not a system variable, and it must be overridden wherever it is read.**
+It is a graph INPUT, reached by `inputref` on its manifest uid (§13.2), so it arrives
+through the interface block's value table and not through `sysvar`. Hand every program the
+evaluated `$outputsize`: filter parameters (`Context.graph_inputs`) and FX-Map programs
+(`Context.program_inputs`) alike, under the same condition as the size expressions. A
+renderer that overrides it only for size expressions evaluates one graph at two output
+sizes, silently. A census of direct readers cannot rule this out: `ChesterfieldSofa`'s HBAO
+LUT reaches `$outputsize` through a slot its own size expression writes (`exp2($outputsize)`
+into slot 0), and with the default it comes out short by exactly the ratio of the two sizes
+(FORMAT-NOTES.md, "The discriminator is not in `$size` at all"). A canvas-sized
+`pixelprocessor` is the exception (§13.6, `pixelprocessor.outputsize = grid`). Other graph
+inputs keep their declared defaults unless the caller sets them (`render(inputs=…)`), since
+an export may have been made with non-default inputs.
 
-**A SIZE EXPRESSION AND A PARAMETER PROGRAM READ DIFFERENT VARIABLES**, which is what makes
-"does `$size` mean something else in a size expression?" the wrong question. Over the eight
-reference assemblies, **30,792 records resolve a size program and not one of them executes a
-`sysvar` instruction of any id**: a size expression is a function of the `$outputsize` graph
-input and of constants, never of `$size` or `$sizelog2`. So the two populations do not
-overlap and there is nothing for a per-attachment reading to discriminate.
+**A size expression and a parameter program read different variables.** Over the eight
+reference assemblies, 30,792 records resolve a size program, and not one executes a `sysvar`
+of any id. A size expression is a function of the `$outputsize` input and of constants,
+never of `$size` or `$sizelog2`, so the question of what `$size` means inside a size
+expression does not arise. `$size` in a `transformation`'s `offset` is the record's evaluated
+size, not its tag. The `switch` gates that admit a mip rung once the render reaches
+`2^(k+1)` pixels read the same quantity, which is what keeps the pyramid consistent across
+output sizes. A `c / $size` offset is a pixel count, so its form does not tell a horizon tap
+from a half-texel nudge.
 
-Two consequences worth stating because both readings have been tried. `$size` in a
-`transformation`'s `offset` is the RENDER's size and not the record's tag: the same graph's
-`switch` gates read `$sizelog2` to admit a mip rung `k` exactly when the render is at least
-`2^(k+1)` pixels, and the two only describe one pyramid — coarsest displacement 0.5 canvas
-at every output size — if they are the same quantity. And a `c / $size` offset is a PIXEL
-count under either reading, so its form does not separate a horizon tap from a half-texel
-alignment nudge; the two populations differ in opcode shape and not in semantics.
+**Filter parameters are per-record constants.** Of 6,793 program-valued parameters in a
+corpus sample, 5,338 read `$sizelog2`, 69 read `$size` and **none** reads `$pos`, so evaluate
+each once. A `pixelprocessor`'s image program does read `$pos`, and for it `$size` and `$pos`
+must describe the same grid, the one it is drawn on. Otherwise a neighbour tap goes
+sub-pixel and the filter silently becomes an identity.
 
-Of 6,793 program-valued parameters across a corpus sample, 5,338 read `$sizelog2`, 69 read
-`$size` and **none** reads `$pos` — they are per-record constants. A `pixelprocessor`'s own
-image program is the other population: it does read `$pos`, and for it `$size` and `$pos`
-must describe the same grid or a neighbour tap goes sub-pixel and the filter silently
-becomes an identity.
+**Inside an FX-Map, `$pos` is the node's base position, and its value is the origin**
+(`fx.pos = origin`; the `corner` arm exists, and a per-pixel `$pos` is refused). FX-Map
+node programs read `$pos` on 26,758 of 41,164 `fxmaps` records, almost always in an `0x89`
+gate as `$pos + <an offset the program scans>` tested against a float4 rectangle the record
+bakes: a cull, not a placement. So `$pos` is the absolute base of a relative walk. Only the
+origin puts the scan on the lattice that the rectangle's bounds align to. It is a per-node
+constant, and a per-pixel `$pos` would return N verdicts where the walk consumes one
+(FORMAT-NOTES.md, "`fx.pos` = `origin` confirmed: `corner` KILLS EMISSION ON 86 RECORDS").
+The open case is a subdivided FX-Map (§13.7). The chain walk is flat, so there is one node
+position, and it is the root's.
 
-**`$pos` MEANS TWO DIFFERENT THINGS, and "the grid being drawn on" is only the first.** The
-census above counts filter PARAMETERS and says nothing about FX-Map NODE programs, which
-are a third population and a large one: 26,758 of 41,164 fxmaps records (65.0%) carry a
-program that reads `$pos`. It is read at two components in 26,907 of 26,907 reads and
-immediately ADDED in 99.5% of them. The split against the sampler is clean — of the programs
-reading `$pos`, 54,661 of 55,462 `pixelprocessor` ones feed `samplelum`/`samplecol` (98.6%)
-against **17 of 26,803** fxmaps ones (0.06%). Inside an FX-Map `$pos` is not a sampling
-coordinate.
+**How an image reaches a program.** `samplelum`/`samplecol` take a **sampler index**, which
+is the *first* immediate in both their 2- and 3-operand encodings. It is in range on 5,711
+of 5,714 three-operand samples (FORMAT-NOTES.md, "Chasing the three LIVE samplers: an ISA
+correction, a provable fix, and one open question").
 
-Its consumer is the GATE. Of 26,741 fxmaps records whose chain reads `$pos`, 26,591 read it
-in an `0x89` gate's program and 150 in the stepper's, while only 34 read it in a named entry
-parameter at all. The idiom is `$pos + <an offset the program itself scans>` tested against a
-float4 rectangle the record bakes — a cull, not a placement. So `$pos` is the **absolute base
-of a relative walk**: the scan the program keeps in its own slots is the relative part, and
-`$pos` is what it is measured from.
+- Bind sampler `k` to the record's `k`-th edge (§6.3). An unwired edge is left unbound.
+- On a record that is itself a declared output, sampler indices that no edge binds are
+  bound to the graph's image inputs in manifest declaration order (`Context.sampler_bindings`).
+  This is the one thing the assembly cannot supply, and the record is marked low-confidence.
+  Expect it to resolve few images: of 120 graphs with image inputs, 107 have no manifest
+  default on any of them and ship no image.
+- A live read of an unbound sampler is a cascade failure (§13.2). A read whose every use is
+  multiplied by a constant 0 is bound to zeros (§13.6).
 
-**The value is the origin, and the record's own bounding rectangle says so.** Its bounds are
-whole or half integers and the walk steps by whole units, so only `$pos` = 0 puts the scan on
-the lattice the bounds are aligned to — a mechanism, not a fit. Emissions against the integer
-cells each rectangle encloses: on the reference specimen, records 1/3 bound `[-13, 14]` in
-both axes = 27², and emit 729 at the origin against 676 from a corner-based frame; another
-specimen's record bounds `[-4, 5]` = 9², and emits 81 against 64. A corner frame misses on
-three records and wins on none. It is also a per-node CONSTANT: every per-pattern candidate
-breaks the same count (a `$number` cell grid gives 416 and 1,792 where the rectangles hold
-729 and 10,000; any per-pattern jitter at all gives 716 for 729). And nothing argues it must
-be non-zero — across 26,803 `$pos`-reading FX programs not one divides by a `$pos`-derived
-value.
+**Three program semantics, each behind an arm.** Each was arbitrated on one construct:
+`Bricks_and_tiles` records 10175–10253, a Flood Fill compiled to pixel processors, with
+jump-flood passes that store texel offsets in their channels and double them each pass
+(FORMAT-NOTES.md, "Record 10253 is not the fault").
 
-Two further things refuse the per-pixel reading outright: a walk consumes one verdict per
-pattern, so a per-pixel `$pos` returns N verdicts of which all but the first are silently
-dropped; and supplying the render grid takes the reference specimen from 70 rendered records
-to 41 and removes `height` entirely. The remaining open case is a SUBDIVIDED FX-Map (§13.7) —
-the chain walk is flat, so there is one node position and it is the root's. See
-`assume.QUESTIONS['fx.pos']`.
+- **`select` is demand-driven** (`program.select = lazy`; `eager` is the arm). A `set` under
+  a `select` branch executes only on the lanes that demand that branch. A tiling FX-Map's
+  gate writes its row height and edge into slots inside the branch that starts a row, and
+  evaluating both arms clobbers them on every emission.
+- **`rand` in a pixel program draws per pixel** (`pixelprocessor.rand = pixel`; `image` is
+  the arm). The hash is salted by the pixel's row-major index plus one. Inside an FX-Map the
+  draw is per emission and per region (§13.7). The hash itself is arbitrary, so an export
+  can be matched only in its statistics (§13.9).
+- **An encoded field is sampled nearest** (`pixelprocessor.sample = nearest`, the texel
+  `floor(pos · W)`; `bilinear` is the arm). A texel offset or a cell id in a float channel
+  does not survive interpolation across a cell edge.
 
-**How an image reaches a program.** `samplelum`/`samplecol` take a **sampler index**, and
-it is the *first* immediate in both their 2- and 3-operand encodings — established by the
-arity bound: the first immediate is in range on 5,711 of 5,714 three-operand samples, while
-the second is out of range 501 times and is the constant `1` in 5,696 of them. Bind sampler
-`k` to the record's `k`-th edge (§6.3). A record with no edges that is itself a declared
-output can still sample: bind then in the manifest's image-input declaration order, which is
-the one thing the assembly cannot supply. Expect this to resolve few images and fail
-honestly for the rest — of 120 graphs with image inputs, 107 have no manifest default on any
-of them and ship no image either.
-
-**Three semantics a library construct decides, because it cannot run without them.** Bricks
-records 10175–10253 are a Flood Fill compiled to pixel processors: a seed pass that offsets
-each pixel toward its cell's corner, then jump-flood passes that read their own channels
-0–1 as a texel offset, sample at `$pos + offset` and `$pos + 2·offset`, and DOUBLE the
-offset each pass (the −512 and −1024 such a chain carries are those offsets in texels, not
-integers passed between stages), gated by `switch` blends on `ceil(0.7·$sizelog2) ≥ k`,
-then a reduction to a per-cell size and flag, and a recolour to one grey per cell. Three
-things make it collapse and each is a statement about programs in general:
-
-- **`select` is demand-driven.** The tiling FX-Map's gate writes its row height and edge
-  into slots INSIDE the branch that starts a row; evaluating both arms and picking one
-  afterwards clobbers those slots on every emission. Under the lazy reading the record
-  draws the tiling; under the eager one it draws eight black patterns. `program.select`.
-- **`rand` in a per-pixel program draws PER PIXEL.** One draw for the whole image gave every
-  cell the same grey — `rand(1.0)` at `$number` 0 is 0.2115, and that was the constant the
-  whole graph carried. `pixelprocessor.rand`. Inside an FX-Map the draw is per emission and
-  per region (§13.7); the hash itself is arbitrary and no export can be matched pixel for
-  pixel, only in its statistics (§13.9).
-- **An encoded field is sampled NEAREST.** A texel offset or a cell id in a float channel
-  does not survive bilinear interpolation across a cell edge. `pixelprocessor.sample`.
-
-Under the three, with the tiling's own chain read (§13.7), graph 001's cone goes from 1,939
-flat records of 2,466 to 116 and its outputs carry stone-shaped blobs at the reference's
-count (48 against 40). All three stay behind arms: they were arbitrated on one record.
-
-The `0x03`/`0x06` value cache is cross-record common-subexpression elimination: the writer
-is one record and the reader another, so it needs one dict threaded through a whole file in
-record order — which the §13.2 pass is. Its indices name no file, so it must not outlive
-the render.
+**The `0x03`/`0x06` value cache is cross-record common-subexpression elimination.** The
+writer is one record and the reader another, so a render needs one dict threaded through
+the whole file in record order, which the §13.2 pass is. Writers precede readers on 7,074
+of 7,074 matched pairs. Its indices name no file, so the cache must not outlive the render,
+and a program compiled against one cache must never run against another (`ops.bind`)
+(FORMAT-NOTES.md, "`0x03`/`0x06` are cross-record common-subexpression elimination").
 
 ### 13.6 Filter semantics
 
-`ref` = the record's own declared width (a pixel-valued intensity is relative to it, not to
-a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel-centred,
-`(col + 0.5) / W`.
+`pos` is pixel-centred, `(col + 0.5) / W`. Sampling is bilinear and **wrap-tiled** unless a
+row says otherwise. `I` is the record's `intensity`. `ref` is the pixel scale of a
+pixel-valued intensity: the record's **tag** width (`warp.reference_px = tag`; the rendered
+width `record` and fixed widths are arms); `blur`, `normal` and `distance` use a fixed 256
+instead. `gx`, `gy` are per-pixel central differences of a map's channel 0. Omitted values
+are §13.8's.
 
 | filter | output |
 |---|---|
 | bitmap | the resource payload (§9), `u8`/`u16` → `[0,1]`; or a graph input's manifest default as a uniform |
-| uniform | `outputcolor`; else a program at a walk-named slot; else the engine default |
-| blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1, and read from EITHER mask — §13.4) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
-| transformation | `in = m·(pos − ½) + ½ + offset` with `matrix22`'s four words read **column-major**: `x_in = m0·x + m2·y`, `y_in = m1·x + m3·y`. Read row-major a quarter turn goes the wrong way — RoofTiles record 62 (`0, −1, 1, 0`) lays its shingle rows in place with every shingle's gradient inverted, height −0.79 against the export, +0.81 column-major; every symmetric matrix (scales, flips, all of Bricks) is identical either way, and no pack scores lower under it. Area-prefilter when minifying |
-| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4`. The width legend declares NO w1 field for filter 3 at all — the fitted table it replaced offered seven (0, 4, 5, 8, 9, 12, 13), every one charging zero words in every state, which was an artefact of a fit admitting any column that varies rather than a statement about layout. Either way it makes no claim the byte reading could contradict; nor can it confirm it. The convention now has SOURCE SUPPORT, where an earlier reading of this row said it had none: four permitted sources carry 21 colour-arm `shuffle` nodes, every one with an explicit `channelred`/`channelgreen`/`channelblue`/`channelalpha`, and one file's ten compile to `w1` = `0x00000400` and `0x03040100`, whose bytes 1 and 2 hold exactly the declared `channelgreen = 4` and `channelblue = 4`. (`grayscaleconversion` is 67 nodes in 25 files, not the 44 this row claimed.) One caveat, unstated anywhere yet: the UNSPECIFIED channels do not compile to a constant pass-through — `[0, 4, 0, 0]` where both inputs are grayscale against `[0, 1, 4, 3]` where input 1 is four-channel — so the default depends on the input's channel count. Every byte holds 0–7, and a reader should refuse the record rather than guess when one does not |
-| levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped. **Per channel**: on a colour record every field is a Float4 and its components genuinely differ — applying component 0 to all four remaps ALPHA by the red curve, which on one corpus record turns an opaque output almost transparent |
-| curve | a cubic-Bezier transfer curve, sampled to a lookup |
-| gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
-| hsl | RGB → HSL, then `hue += h − ½` (mod 1), `sat ← clip(sat·2s)`, `lum ← clip(lum + lu − ½)`, back to RGB; each of the three defaults to ½, which is the neutral value — so an unnamed parameter here is silently an identity |
-| blur | separable box, radius `clip(\|I\|,0,256)/256 · max(W,H)` px — the intensity is in **pixels at 256 whatever the record's size** (`blur.reference_px = 256`; `record`, the record's own width, is the reading before and stays what `warp` / `dirmotionblur` / `directionalwarp` use). The `256/min($size)` idiom says so: it is "one pixel at any size" only under a fixed 256, and under the record's width it is a quarter-pixel no-op at 1024 — Bricks graph 001's outline `\|x − blur(x)\|` (10164) was zero, its Flood Fill saw one cell, and its stones never existed (10253 flat at native; sd 0.305 now). **Sub-pixel is NOT an identity where the record is an edge detector** (`blur.subpixel`), and at a capped grid that idiom is sub-pixel again. Likewise the `brick` pattern profile's 85% inset swallows a 2-px mortar at 256 (`fx.brick`) |
-| sharpen | `src + amount·(src − box₁)`; `amount` = `intensity`, absent ⇒ 1. Read the baked arm only and a stated 0 (6 corpus records) is indistinguishable from an absent one |
-| dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
-| directionalwarp | displace input 0 by `(2·h − 1)·I/ref` along `2π·warpangle`, `h` = input 1 |
-| warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
-| normal | `n = normalise(−gx·I·W/256, −gy·I·W/256, 1)`, `out = ½ + ½n`; `inversedy` negates `gy`. The reference is a **constant 256**, not the record's size: the engine's own exports give slope/gradient = 160.005 on a 2048-px Chesterfield export at `I` 10 and 9.397 on a 4096-px Rokviz export at `I` 0.25, against 160.000 and 9.405 predicted by a fixed 256 and 20.000 / 0.588 predicted by the record's width. Scale it by the record's own size instead and strength tracks the output resolution: at `$outputsize` 11 that takes Chesterfield's normal Z from 0.961 to 0.999 against the export's 0.966, its MAE from 0.0332 to 0.0650 and its fit slope from 0.764 to 5.432. The same regression run on a RENDER's own normal and height pair — no export in it — reproduces `K = (I/g)·(W/256)` at 10.000 / 20.001 / 40.000 / 80.000 for widths 128 / 256 / 512 / 1024 at correlation 1.000, and the ratio `K_ref/K_ours = R_ref/R_ours` holds to 0.4% on three graphs in two packages without knowing either pack's `I` or `g`. A residual on this channel is therefore its height input's: on Chesterfield `normal` and `height` fit the export at the same slope (0.764 against 0.762) and on `Bricks_and_tiles` they do again with the sign reversed (1.361 against 1.292) |
-| emboss | `base + k·(g₁(pos) − g₁(pos + (δ, −δ)))`, `δ = 0.005859375` |
-| distance | a distance field grown from the mask input (edge 0), `1 − d/R` clipped, `R` = `w1` field 1 (§13.4) in **pixels at 256**, baked or a program; a fallback locator remains for the records that name neither — mark every record it answers for. Radius unit and falloff are arbitrated: ×0.25 / ×0.5 / ×2 and exponents 2 / ½ all lose on every Bricks graph. A second edge that is a DIFFERENT record is a **source** (edge 1 is colour whenever the record is, 1,693 of 1,693 corpus two-edge records): the engine spreads the source's value from the nearest lit mask pixel across the field. The combination is **`spread`** — the source's value flat out to the radius, `combinedistance = 0`, which every one of the 19 permitted sightings declares: on the companion instruments it puts every Bricks graph's per-tile tilt and level, the pillow profile and the tile-scale octaves on the export where `field` (source ignored) has none of them, and what it loses is correlation to the export's per-tile random directions and the mid octaves a dead noise chain owns (§13.9). `nearest` (source × falloff) darkens the pillow's edge 0.06 below the export; `field` is the reading before. A source that is the mask record itself is no source |
+| uniform | `outputcolor`, clipped to `[0,1]`; else a program at a walk-named slot; else the engine default (§13.8) |
+| blend | `clip(dst·(1−op) + f(dst, src)·op)`, `f` per mode below, `dst` = input 0, `src` = input 1; `op` = `opacitymult` (at either of its `w1` positions, §13.4; absent ⇒ 1) × channel 0 of input 2 when a third edge is present. `switch` selects `src` where `op ≥ ½`, else `dst` (`blend.switch = threshold`; `lerp` is an arm). Unequal channel counts, or a mode outside 0–11, refuse |
+| transformation | `in = m·(pos − ½) + ½ + offset`, `matrix22`'s words **column-major**: `x_in = m0·x + m2·y`, `y_in = m1·x + m3·y` (`transformation.matrix = columns`); absent matrix ⇒ identity, absent offset ⇒ 0. Symmetric matrices read the same either way; row-major turns RoofTiles record 62's quarter turn the wrong way (FORMAT-NOTES.md, "RoofTiles: the shingles were upside down"). Box-halve the source while one output pixel covers ≥ 2 source texels |
+| shuffle | tag bit 0 (colour) decides. Clear (`grayscaleconversion`): `Σ channelsweights·src`; a non-zero weight on a channel the input lacks refuses. Set (Channel Shuffle): byte k of `w1` is output channel k's selector `s`, taking channel `s mod 4` of input `s div 4`; every byte is 0–7, else refuse the record rather than guess. Unspecified channels compile to input-dependent bytes (`[0, 4, 0, 0]` with two grey inputs, `[0, 1, 4, 3]` with a four-channel input 1), never a fixed pass-through (FORMAT-NOTES.md, "`shuffle`'s channel selectors are four bytes in slot 1"; source support in "`Add Sub` is `d + 2s - 1`") |
+| levels | **per channel**, each field at its declared width: `t = clip((src − lo)/(hi − lo))`; zero span ⇒ `t = [src ≥ lo]` (`levels.zerospan = step`); `t ← t^(ln½/ln mid)`, `mid` held in `[10⁻⁴, 1 − 10⁻⁴]`; `out = clip(lo′ + t(hi′ − lo′))`. A colour record's fields are Float4s whose components differ; applying component 0 to all four remaps alpha by the red curve (FORMAT-NOTES.md, "`levels`: the renderer is right") |
+| curve | a cubic-Bézier transfer curve, sampled to a lookup, applied per channel to the clipped input |
+| gradient | a ramp indexed by the input's channel 0 (clipped), linear between stops |
+| dyngradient | as `gradient`, the ramp being input 1's middle row or column along its longer axis, nearest entry |
+| hsl | RGB → HSL, then `hue += h − ½` (mod 1), `sat ← clip(sat·2s)`, `lum ← clip(lum + lu − ½)`, back to RGB; alpha passes. Each defaults to ½, the neutral value, so an unnamed parameter is silently an identity |
+| blur | separable box of half-width `r = round(clip(\|I\|,0,256)/256 · max(W,H))` px, clipped; `r < 1` ⇒ identity (`blur.subpixel = identity`; `fractional` is an arm). `I` is in **pixels at 256 whatever the record's size** (`blur.reference_px = 256`): the `256/min($size)` idiom means one pixel only under it. On a capped grid that idiom falls sub-pixel and an edge detector `\|x − blur(x)\|` reads 0; score at native (§13.9) (FORMAT-NOTES.md, "Graph 001's stones never existed") |
+| sharpen | `clip(src + amount·(src − box₁(src)))`, `box₁` the 3 × 3 box; `amount` = `intensity`, baked or a program, absent ⇒ 1. A stated 0 is a value, not an absence |
+| dirmotionblur | the mean of 17 taps at `pos + (k/16 − ½)·L·(cos θ, sin θ)`, `k` = 0…16, `θ = 2π·mblurangle`, `L = clip(\|I\|,0,256)/ref` in canvas units — `I` pixels at `ref` in total, no further factor (`dirmotionblur.extent = total`; `radius` (2L) and `x8render` (`L = 8·clip(\|I\|,0,256)/W`) are arms) (FORMAT-NOTES.md, "Where graph 004 loses the top two octaves"; "The round-tile groove") |
+| directionalwarp | input 0 sampled at `pos + ((2h − 1)·I/ref)·(cos θ, sin θ)`, `θ = 2π·warpangle`, `h` = input 1's channel 0; absent intensity or angle ⇒ 0 |
+| warp | input 0 sampled at `pos + (gx·W, gy·H)·I/ref`, `gx`, `gy` of input 1 — the **gradient** of input 1 (FORMAT-NOTES.md, "`tag` promoted, COMMITTED") |
+| normal | `n = normalise(−gx·I·W/256, −gy·I·H/256, 1)`, `out = clip(½ + ½n)`, alpha 1 on a colour record; `inversedy` (`w1` field 1: baked ⇒ set, program ⇒ value > ½) negates `gy`. The reference is a **constant 256** (`normal.reference_px = 256`), not the record's size: the engine's own exports fit `slope = (I/g)·(R/256)` at R = 2048 and 4096. A residual on this channel is its height input's (FORMAT-NOTES.md, "`f_normal` reproduces the engine's own normal-from-height relation"; "The second pack settles it") |
+| emboss | `clip(base + k·(g(pos) − g(pos + (δ, −δ))))`, `base` = input 0, `g` = input 1's channel 0, `δ = 0.005859375` (1.5/256), `k = 0.1` (`emboss.intensity = program`, an arm, reads a record program instead) |
+| distance | `clip(1 − d/R)`, `d` the Euclidean distance to the nearest lit (> ½) pixel of the mask input (edge 0), 0 when none is lit; `R` = `w1` field 1 (§13.4), baked or a program, in **pixels at 256** (scaled by `W/256`); unit and linear falloff arbitrated (FORMAT-NOTES.md, "`distance`'s radius unit and falloff shape"). A fallback locator answers records that name neither arm; mark each. A second edge that is a DIFFERENT record is a **source** (edge 1 is colour exactly when the record is, 1,693 of 1,693): the output is the source's value at the nearest lit mask pixel, flat out to the radius, 0 beyond — **`spread`** (`distance.propagate = spread`, i.e. `combinedistance = 0`, which every permitted sighting declares; `field` (source ignored), `nearest` (source × falloff), `flag` are arms). A source that is the mask record itself is no source (FORMAT-NOTES.md, "`distance.propagate = spread` is the default") |
 | vectorshape | filter 5, a generator: the embedded triangle strip (§9, `vector_shape` / `vector_faces` — joins and part boundaries dropped) rasterised as a mask, 1.0 where a triangle covers a pixel centre, 0.0 elsewhere; no parameter is read (the class-bit-25 float is 1.0 on every record checked) |
-| pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup, run first to seed the slot frame. Inside a **canvas-sized** pixel processor (declared size = `2^$outputsize`) `$size`, `$pos` AND `$outputsize` all describe the grid the record is drawn on: a program that derives its texel from `$outputsize` (`0.5 / 2^os` — Bricks' flood-fill seed, RoofTiles' height-to-normal) is otherwise told the export size and on a capped grid its neighbour tap is a fraction of a pixel, no edge is found, and the machine emits constants. A record pinned to its own size (Chesterfield's 2048 × 16 HBAO LUT) reads the render's `$outputsize`, which it uses to turn a per-pixel slope into a per-canvas one. A slot the frame never set reads as 0 (an accumulator's initial value; Onyx 1470). A `sample` of an input past the wired arity whose every use is multiplied by a constant 0 is bound to zeros — its binding cannot change the output (SandyStonePath 177, 995 records behind it); a LIVE read of an unwired input refuses |
+| pixelprocessor | the program at the **last header slot**, per pixel; earlier slots (inherited parameters, setup) run first to seed the slot frame. Inputs are read **nearest-texel** (`pixelprocessor.sample = nearest`); `rand` is salted per pixel (`pixelprocessor.rand = pixel`). In a **canvas-sized** record (declared size = `2^$outputsize`) `$size`, `$pos` and `$outputsize` all describe the grid it is drawn on (`pixelprocessor.outputsize = grid`), so a texel derived as `0.5 / 2^os` is a pixel; a record pinned to its own size (Chesterfield's 2048 × 16 HBAO LUT) reads the render's `$outputsize`. An unset slot reads 0 (`pixelprocessor.unset = zero`; an accumulator's initial value, Onyx 1470). A `sample` past the wired arity whose every use is multiplied by a constant 0 is bound to zeros; a LIVE read of an unwired input refuses (FORMAT-NOTES.md, "A pixel processor's `$outputsize` is the grid it is drawn on"; "SandyStonePath renders end to end") |
 | fxmaps | §13.7 |
 
-**Blend modes.** The nibble's twelve values are `0 copy, 1 add, 2 subtract, 3 multiply,
-4 addsub, 5 max, 6 min, 7 switch, 8 divide, 9 overlay, 10 screen, 11 softlight`, and these
-are **declared names, not conventional ones**. A `.sbs` states `blendingmode` on a node as a
-bare integer, so the source's parameter VALUES can only pin the field, never name it; but
-where an author exposes the parameter as a graph input the file also carries the widget for
-it, and for an enumeration that is a `dropdownlist` whose option string is
-`default;value;label;value;label;…`. Two permitted sources expose it, over eight widgets,
-all carrying
+**Blend modes.** The `blendingmode` nibble's values and `f(d, s)`:
 
-```
-0;Copy 1;Add (Linear Dodge) 2;Subtract 3;Multiply 4;Add Sub 5;Max (Lighten)
-6;Min (Darken) 7;Switch 8;Divide 9;Overlay 10;Screen 11;Soft Light
-```
+| mode | `f(d, s)` | arithmetic fixed by |
+|---|---|---|
+| 0 copy | `s` | name |
+| 1 add | `d + s` | name |
+| 2 subtract | `d − s` | name |
+| 3 multiply | `d·s` | name |
+| 4 addsub | `d + 2s − 1` | a permitted source's implementation |
+| 5 max | `max(d, s)` | name |
+| 6 min | `min(d, s)` | name |
+| 7 switch | selects on `op` (above) | name; threshold ½ is convention |
+| 8 divide | `d/s`, `\|s\| < 10⁻⁶` read as 10⁻⁶ | name; operand order is convention |
+| 9 overlay | `2ds` for `d < ½`, else `1 − 2(1−d)(1−s)` | name; gate on `d` is convention |
+| 10 screen | `1 − (1−d)(1−s)` | name |
+| 11 softlight | `2ds + d²(1−2s)` for `s < ½`, else `2d(1−s) + √d(2s−1)` | name; member is convention |
 
-and in each the node's parameter is a one-node `get_integer1("<that input>")` — a literal
-pass-through, so the labelled integer *is* `blendingmode`. Read the option string's leading
-token as the widget's own default and not as the first key: all 375 dropdown widgets in the
-permitted sources have an odd token count, and the leading token equals the declared
-`<defaultValue>` in 357 of them.
+The names are **declared, not conventional**: where a permitted source exposes
+`blendingmode` as a graph input, its `dropdownlist` labels 0–11 exactly so and the node's
+parameter is a literal `get_integer1` pass-through. An option string reads
+`default;value;label;…`, the leading token the widget's default (all 375 dropdowns in the
+permitted sources have an odd token count; the leading token equals `<defaultValue>` in 357).
+The support is one collection, two files, no declared author, raised by a tool-generated
+`<description>` block — an inference, stated as one (FORMAT-NOTES.md, "`blendingmode`'s twelve
+names are declared by a permitted source"). The enumeration is **closed at 11**: over 310,697
+corpus blend records the nibble never takes 12–15. Modes 2 and 5 also stand structurally:
+mode 2 in both orders combined by mode 5 is `max(a−b, b−a)`. `addsub` is fixed by a permitted
+`.sbs` that reimplements five modes as pixel processors (`hadd` … `hmax`, each
+`lerp(bg, lerp(bg, f(bg, fg), opacity), mask)`), which run agree with the table to 1.1e-16
+(FORMAT-NOTES.md, "`Add Sub` is `d + 2s - 1`"). `softlight`'s member is **undecidable here**
+(the W3C formula differs from it by at most 0.000455 over the reference packs' 17.4 M mode-11
+pixels); `overlay`'s gate is decidable in principle (read on `s` it is `hardlight`) and the
+reference packs do not decide it.
 
-The support is **one collection, two files, no declared author** — a lead rather than
-convergence, and it is raised only by the surrounding `<description>` block being
-demonstrably tool-generated, appearing verbatim across eleven permitted files in two
-unrelated collections. So the item list is the filter's own metadata transcribed, which is an
-inference and is stated as one.
+**Operand order is settled by the source**: input 0 is `dst` = `destination`, input 1 is `src`
+= `source`. The 28 paired records identified by a unique `opacitymult` all place the declared
+`destination` at slot 0 (control: 2 of 30), modes 9 and 11 included; the source states a
+blend node has exactly the connectors `destination`, `source`, `opacity`.
 
-The enumeration is **closed at 11**: over 903,616 corpus records the nibble takes 0–11 and
-never 12–15, on 310,697 blend records with no unreadable mode, so a twelve-entry vocabulary
-and the field's observed range agree on both sides. Modes 2, 5 and 6 also stand on the older
-structural argument — two records taking the same pair in opposite order under mode 2,
-combined by mode 5, is `max(a−b, b−a)`, an absolute difference that only parses if 2 is
-subtract and 5 is max.
-
-**A NAME IS NOT AN ARITHMETIC.** Seven of the twelve are fixed by their name — copy `s`,
-add `d+s`, subtract `d−s`, multiply `d·s`, max, min, screen `1−(1−d)(1−s)`. An eighth is
-fixed by a permitted source that implements it: `addsub` = `d + 2s − 1`. One `.sbs`
-reimplements five blend operations as pixel processors, to keep the overflow the engine's
-own node clamps away — its graphs are named `hadd`, `hsub`, `haddsub`, `hmin` and `hmax`,
-each carries an "Out of Range Mask" output, and each computes
-`lerp(bg, lerp(bg, f(bg, fg), opacity), mask)`, which is this section's own formula with
-`d` = Background and `s` = Foreground. Four of the five reproduce modes 1, 2, 5 and 6, whose
-arithmetic is already fixed by their names and by the `max(a−b, b−a)` argument above; the
-fifth is `bg + 2·fg − 1`. Asked of the compiled sibling rather than of the XML — the
-programs transpiled and run over a random field — they agree with `BLEND_MODES` to 1.1e-16,
-against 0.99 for the same records tested against a neighbouring mode or against exchanged
-operands.
-
-**Four are still this specification's convention** rather than something the file states:
-`switch`'s threshold (it selects `src` on `op ≥ ½`); `divide`'s operand order (`d/s`);
-`overlay`'s gate (`2ds` below `d = ½` and `1 − 2(1−d)(1−s)` above, i.e. the gate reads `d`
-and not `s`); and `softlight`'s member (`2ds + d²(1−2s)` below `s = ½` and
-`2d(1−s) + √d(2s−1)` above). Of these, softlight's is not merely undecided but **undecidable
-here**: over the 17.4 M mode-11 pixels a reference render composites, the W3C formula differs
-from the one above by at most 0.000455 and on no pixel by 10⁻³, so no score taken on this
-corpus can separate them. Overlay's gate is decidable in principle — reading it on `s`, which
-is `hardlight`, moves 53.9% of one pack's mode-9 pixels by more than 10⁻³ and up to 0.123 —
-and the reference packs do not decide it: 21 mode-9 records sit in a scored cone whose
-channels are live, and the render is 4 better / 2 worse on correlation with the bands going
-the wrong way.
-
-**Operand order is settled, and by the source rather than by the render**: input 0 is `dst`
-= `destination`, input 1 is `src` = `source`. A blend node's `opacitymult`, where it has five
-significant decimals and is unique in its `.sbs`, names one compiled record; the KINDS of
-that record's two input edges are then a property the pairing never used. Over the permitted
-paired sources, 28 records place the source's declared `destination` at slot 0 and **0** place
-it at slot 1, with two further records whose identified side also lands where slot 0 =
-`destination` predicts. The control — the same question asked of a random other blend record
-in the same file — reproduces the declared kind pair 2 times in 30. The modes covered include
-the asymmetric 9 and 11, so the order does not rest on the modes whose arithmetic is open.
-The source states that a blend node has exactly the connectors `destination`, `source` and
-`opacity`, which is the shape §13.6's formula reads.
-
-A second enumerated `blend` parameter is named by the same mechanism and its slot is **not
-located**: `colorblending`, `0 Use Source Alpha, 1 Ignore Alpha, 2 Straight Alpha Blending,
-3 Premultiplied Alpha Blending`. It is recorded in FORMAT-NOTES.md rather than in §13.4's
-legend, because a name legend states where a field is and this one cannot.
+A second enumerated `blend` parameter, `colorblending` (`0 Use Source Alpha, 1 Ignore Alpha,
+2 Straight Alpha Blending, 3 Premultiplied Alpha Blending`), is named by the same mechanism
+and its slot is **not located**; it is in FORMAT-NOTES.md, not §13.4's legend, because a name
+legend states where a field is and this one cannot.
 
 ### 13.7 FX-Map evaluation
 
@@ -2142,255 +1554,172 @@ are themselves a tree of Quadrants, each drawing in its own region (**Subdivisio
 
 | node | role |
 |---|---|
-| `0x18B` `0x1AB` `0x19B` `0x20B` | **iterate** — run the subtree `numberadded` times, `$number` = 0…n−1. `0x19B` is `0x18B` under bit 4 and its program returns an integer count on 245 of 245 corpus nodes; an earlier row here called it a stepper |
+| `0x18B` `0x1AB` `0x19B` | **iterate** — run the loop child (the successor) `numberadded` times, `$number` = 0…n−1; `0x1AB` (`0x18B` \| `0x20`) runs its `randomseed` program first; `0x19B` is `0x18B` under bit 4 (its program returns an integer count, 245 of 245) |
 | `0x1CB` | **iterate with an after-child** — the loop child is the successor (word 3); the spare word (2) names a child run ONCE after the loop, where the record puts the draw pass that reads the loop's accumulated slots |
-| `0x89` | **switch** — its program returns a predicate; the successor is the TRUE child and the spare word (2) the FALSE child, 0 for none. "Walk on while true" is the false-child = 0 case |
-| `0x99` `0x??9B` | **stepper / switch** — a per-iteration state update (a raster/spiral position); `0x99`'s spare word (3) is likewise a FALSE child when wired |
-| `0x1DB` `0x1A3` | the `0x1CB` / `0x1AB` **iterates in a variant compile** — bit 3 clear on the iterate family, bit 4 set on the two-pass node. `0x1DB` lays out `[hdr][baked word][program][after][loop]` (§6's mask places it so) and its program is Bricks 10081's `0x1CB` program line for line (zero the statistics slots, return 1); `0x1A3` has `0x1AB`'s shape (randomseed and numberadded programs, loop child) and its count program reads a tile-count graph input as 10081's does. Cliff, Cobblestone, desert_cliff_eroded and 15 more corpus files carry the stone tiling this way; an earlier row here called `0x1DB` an unestablished branch |
-| `0x??1B` | **branch** — a state-initialiser program and TWO children (§8), both walked |
-| `0x??0B` | leaf — the entry table draws. **The upper bits (`header >> 8`) are the baked emission count**: `0x190B` is 25, `0x510B` 81 = 9², `0x1B90B` 441 = 21², `0xE100B` 3600 = 60². Corpus-wide 1,635 leaf nodes carry one; every independent count reader agrees where the layout is square (`grid_width` 287 of 287, `number_grid` 134 of 134) and where it is not the header holds the product the readers cannot express (`0x770B` = 119 = 7 × 17 rows under a `floor($number / 7)` placement; 589 = 19 × 31; 143 = 13 × 11). In a chain with a count node that node's count stands where it is not 1 (46 of 46 readable agree); where it degenerates to 1 — Tiled roof 383's `((aspect − 1) mod 2 + aspect)²`, a spiral bound that is 1 on a square canvas, under a leaf stating 22 — the leaf's count is emitted in the `placement` mode below (the gate runs once), 56 of 56 readable agree. A leaf-only chain — 1,371 of them — emits `header >> 8` patterns with `$number` = 0…n−1; one leaf is plain `0x0B` in the whole corpus (Cliff 1200). `fx.leafcount` (`header` \| `one`) |
+| `0x89` | **switch** — its program returns a predicate; the successor is the TRUE child, the spare word (2) the FALSE child, 0 for none. "Walk on while true" is the false-child = 0 case |
+| `0x99`, other `0x??9B` | **stepper / switch** — a per-iteration state update (a raster/spiral position); `0x99`'s spare word (3) is a FALSE child when wired |
+| `0x1DB` `0x1A3` | `0x1CB` / `0x1AB` **in a variant compile** (bit 3 clear; bit 4 set on the two-pass node). `0x1DB` is `[hdr][baked word][program][after][loop]`, its program `0x1CB`'s (zero the statistics slots, return 1); `0x1A3` has `0x1AB`'s shape (FORMAT-NOTES.md, "`0x1DB` and `0x1A3` are the Bricks tiling") |
+| `0x??1B` | **branch** — bit 7 clear, no program of its own. Word 1 `0x3039`: two children, a pointer at word 2 and a node contiguous at word 3, both walked; word 1 `0` (12 nodes, one file): the entry table follows at word 3 (FORMAT-NOTES.md, "The last hand-stated node entry, `FX_NODES2[0x1B]`") |
+| `0x??0B` | **leaf** — the entry table draws. **`header >> 8` is the baked emission count**: `0x190B` 25, `0x510B` 81 = 9², `0xE100B` 3600, and products the placement readers cannot express (`0x770B` = 119 = 7 × 17). `0x20B` is an addnode baking `numberadded` = 2 in this form; plain `0x0B` states none (`fx.leafcount = header`; `one` is an arm) (FORMAT-NOTES.md, "The blur value cannot be seen because the picture behind it was blank") |
 
-**The spare word of `0x89`, `0x99` and `0x1CB` is a second child, and the table above
-reads it as nothing.** `0x89` / `0x99` are two-way Switches: the word before the
-successor (word 2 / word 3) is the FALSE child and the successor the TRUE child — on
-Bricks record 10081 the Switch program writes a column count into slot 45 when it
-returns false and a row count into slot 46 when true, and the false word addresses the
-`0x19B` whose program returns slot 45. `0x1CB` is an iterate whose spare word (2) is a
-child run ONCE AFTER the loop child (3) — the same record puts a statistics pass under
-the loop and the draw pass that reads its slots under the after-child. `0x19B` is an
-iterate (`0x18B` under bit 4; its program returns an int count, 245 of 245 corpus nodes)
-and not a stepper. Corpus census, 437 files: the false child is wired on 205 of 27,093
-`0x89` and 88 of 238 `0x99`, the after-child on 65 of 1,865 `0x1CB` — about 150 records,
-every one of which the one-successor walk truncates. The reading is `fx.chain=tree`
-(`render2/fxchain.py`); the "gate: walk on while true" row is exactly the false-child =
-0 case. FORMAT-NOTES.md, "Record 10253 is not the fault".
+**The spare words are children.** `fx.chain = tree` (`render2/fxchain.py`) walks `0x89` /
+`0x99` false children, `0x1CB` after-children, `0x19B` loops and the `0x1DB` / `0x1A3`
+iterates; a record holding none of them takes the one-successor list walk (`fx.chain = list`
+keeps that walk for every record, reading spare words as nothing and running `0x19B` once as
+a stepper). Which word is which is read off Bricks 10081: its Switch program writes a column
+count into slot 45 when false and a row count into slot 46 when true, and the false word
+addresses the `0x19B` whose program returns slot 45. The false child is wired on 205 of
+27,093 corpus `0x89` and 88 of 238 `0x99`, the after-child on 65 of 1,865 `0x1CB`
+(FORMAT-NOTES.md, "Record 10253 is not the fault").
 
-**The emission count**, in this order (a leaf-only chain takes its leaf's baked count
-above, and none of this applies):
+**The emission count**, first rule that applies; a leaf-only chain instead emits its leaf's
+count (`$number` = 0…n−1; once for a plain `0x0B`).
 
-1. If a placement program lays a `$number` **grid** — `floor($number / N)` — the bound is
-   that grid's cell count `N²`, not `numberadded`, which for those records is an amount.
-2. Otherwise, if `numberadded` is 1 *and* a placement program scales `$number` **linearly**
-   by exactly one constant `1/N`, the bound is `N`. This is the file contradicting itself —
-   a record computing N positions and visiting one — and it fires on 86 of 41,906 records.
-   Read the constant off the **bytecode**, not off decompiled source: integer constants are
-   spelled bare, and `const.i1 27` reinterpreted as float32 is 3.78e-44.
-3. Otherwise `numberadded`.
+1. A placement program lays a `$number` **grid**, `floor($number / N)`: `N²`, not
+   `numberadded`, which for those records is an amount (`fx.gridcount = divisor`).
+2. `numberadded` is 1 and the leaf states a count > 1: the leaf's count (Tiled roof 383's
+   count is a spiral bound, 1 on a square canvas, under a leaf stating 22). A count other
+   than 1 stands, and agrees with the leaf's.
+3. `numberadded` is 1 and a placement program scales `$number` **linearly** by exactly one
+   constant `1/N`: `N` — the record computes N positions and visits one. Read the constant
+   off the **bytecode**: integer constants are spelled bare, and `const.i1 27` read as
+   float32 is 3.78e-44.
+4. Otherwise `numberadded`.
 
-Under 1 or 2 the chain's stepper and gate run **once**, not per emission: the placement
-already carries each pattern's position and re-driving the spiral adds a second one.
+Under rule 1 steppers run once and gates per emission; under rules 2 and 3 both run **once**
+and the gate's predicate is not consulted: the placement already carries each position, and
+re-driving the spiral adds a second one.
 
-**Drawing.** Each entry emits a pattern at `branchoffset + frameoffset`, of size
-`patternsize`, rotated `patternrotation` turns, tiled at unit spacing; overlaps combine by
-`max` where that has been arbitrated (ChesterfieldSofa's tufts, `metallic` at MAE 0.0004)
-— and **the record's header states the canvas the patterns land on and a global gain**. The canvas is a **torus**: a pattern whose centre lies outside it is drawn at the centre modulo the canvas (RoofTiles record 7 places its rows at `branchoffset` x = 0, 0.5, 1.0, … 4.5, one full-width stripe each — the stagger — and a reader that only copies a pattern to its immediate neighbours loses every row past the second).
-§7.4's fxmaps fields, named by two permitted pairings, are field 0 `background` (one word
-grey, four colour), field 1 `hurst` (the node's Roughness) and field 2 `opacitymult` (its
-Global Opacity). They are not vacuous: over 41,164 records, **all 2,071 whose entries bake a
-NEGATIVE `opacity` bake `background = 1.0`, and 0 of the 2,874 with only non-negative
-opacities do.** A baked `opacity = −1` (4,068 entries on two tags) is one library construct
-— a (5,1) stroke SUBTRACTED from a white canvas — and it can do nothing under `max`. Entry
-tag **bit 18 says a `blendingmode` is declared** (ie_curve 43 of 43 own entries,
-ie_particles 2 of 2, ie_pcloud 110 of 110 set it; Simulator__Grid 0 of 19 and Clouds_3 0 of
-4 declare none): the `max`-arbitrated tufts set it and the −1 construct clears it, so the
-composite is per cell and a reader should read the bit (`fx.header`, `fx.combine = bit18`,
-`fx.negopacity`, `fx.hurst` in `assume`). **Where bit 18 is clear the composite is `max`
-too** (`fx.combine = max`): the seed-invariant LEVEL of graphs 004/005's roughness
-(reference 0.558 / 0.555) is met by the construct drawn as `max` (0.571 / 0.562) and
-missed by signed add (0.30), and Bricks' dirt splatter 8025 — 256 gaussians at
-`opacitymult` 0.4, bit 18 clear — passes 28% of the canvas through its 0.29 cut under
-signed add and 6% under `max`, which is the few-percent dirt the export shows and what
-lets the file's own composition land the tiles' level and top on the export's (0.623 /
-0.764 against 0.645 / 0.775 on 002). The authored thresholds downstream of the −1
-construct (`levels` at 0.333 and [0.66, 0.82]) still cut nothing under `max` with a
-white canvas, so that construct's draw is the subdivision gain's question (§13.7,
-`fx.hurst`), not the combine's. FORMAT-NOTES.md, "Graph 001's first annihilation point
-is a white canvas the file states" and "The dirt overlay's coverage is the combine". The shape is the entry tag's `patterntype` nibble (§8): `3 disc, 4 paraboloid,
-5 bell, 6 gaussian, 7 thorn, 8 pyramid, 9 brick, 10 gradation, 11 waves, 12 half bell,
-13 ridged bell, 14 crescent, 15 capsule, 16 cone`; nibble 0 is a catch-all that includes
-Square. `imageindex`, when present, makes the pattern an input image sampled over its own
-footprint.
+**Drawing.** Canvas coordinates have 0 at the canvas centre. Each entry emits a pattern
+centred at `branchoffset + frameoffset`, of size `patternsize`, rotated `2π·patternrotation`
+counter-clockwise in the x-right, y-down frame (`fx.rotation = ccw`; non-finite ⇒ 0). It is
+drawn at its centre and at whole-canvas offsets up to `min(3, ⌈max size⌉)` per axis where
+those copies overlap the canvas (`fx.centre = reach`); `fx.centre = wrap`, an arm, first takes
+the centre modulo the canvas, the only reading under which all of RoofTiles record 7's rows
+(`branchoffset` x = 0, 0.5, … 4.5) land. Skip a pattern whose size or centre is non-finite,
+whose size is `≤ 0`, `> 64` or `< 10⁻⁶` (the corpus has nothing between 1e-30 and 1e-06), or
+that is a marker (tag low byte `0x08`, `fx.markers = skip`). No `patternsize` ⇒ the whole
+canvas (`fx.sizeless = fill`; `skip`, `half`, `quarter` are arms). The value is
+`clip(opacity, −1, 1) · gain · profile` (absent opacity ⇒ 1, `fx.negopacity = signed`), times
+the named input image sampled over the footprint when `imageindex` is present (absent on a
+record with exactly one image input, it names that input). Patterns combine by **`max`**, for
+every entry (`fx.combine = max`); the canvas is clipped to `[0,1]`.
 
-**A pattern's parameters reach the draw two ways, and only one of them is sound.** Each entry
-parameter is either `baked` — read from the entry's own slots by the §8 walk — or a
-**program** evaluated per emission. Over 60 permitted specimens, of 8,210 `patternsize`
-parameters:
+**The record's header states the canvas and a global gain** (§7.4's fields, named by two
+permitted pairings): field 0 `background` (one word grey, four colour) is the canvas's
+initial value (absent ⇒ 0); `gain = opacitymult · 2^(−hurst·k)` from field 2 `opacitymult`
+(Global Opacity) and field 1 `hurst` (Roughness), `k` the region depth (**Subdivision**)
+counted from the root, 0 for a flat draw (`fx.header = read`, `fx.hurst = exp`,
+`fx.hurst.depth = root`; absent `hurst` ⇒ 0; `off`, `exp2` = `2^(−2·hurst·k)` and
+`pow` = `hurst^k` are arms). The fields are not vacuous: all 2,071 records whose entries bake
+a negative `opacity` bake `background = 1.0`, and none of the 2,874 with only non-negative
+ones does. A baked `opacity = −1` is one library construct, a (5,1) stroke subtracted from a
+white canvas; under `max` it does nothing, so its draw is the gain's question, not the
+combine's (FORMAT-NOTES.md, "Graph 001's first annihilation point is a white canvas"). Entry
+tag **bit 18 says a `blendingmode` is declared** on the source's `paramset` (ie_curve 43 of
+43, ie_pcloud 110 of 110, Simulator__Grid 0 of 19); the combine is `max` either way, and
+`bit18` (clear ⇒ signed add), `background`, `add` and `over` are arms (FORMAT-NOTES.md, "The
+dirt overlay's coverage is the combine").
 
-| source | n | zero, non-finite or absurd |
-|---|---|---|
-| baked | 3,732 | **none** |
-| program | 4,478 | the whole of them |
+**The profile** is set by `patterntype` (§8) over the footprint `|lx|, |ly| ≤ ½` (0 outside),
+`r = 2·√(lx² + ly²)`, clipped to `[0,1]`: `3 disc` `[r ≤ 1]`; `4 paraboloid` `1 − r²`;
+`5 bell` `(1 − r²)²` (`fx.bell = t2`; `gaussian` an arm); `6 gaussian` `exp(−4r²)`;
+`7 thorn` `(1 − r)³`; `8 pyramid` `1 − max(|2lx|, |2ly|)`; `9 brick` the whole footprint
+(`fx.brick = fill`; `inset`, an 85% hard inset, an arm); `10 gradation` `½ + lx`; `11 waves`
+`½ + ½cos(4π·lx)`; `12 half bell` `exp(−4r²)` where `ly ≥ 0` (`fx.halfbell = gaussian`;
+`paraboloid` an arm); `13 ridged bell` `(1 − r)·|cos 3πr|`; `14 crescent` `1 − r` outside
+`2·√((lx − 0.15)² + ly²) ≤ 0.75`; `15 capsule` `1 − max(|2ly|, max(|2lx| − ½, 0))`; `16 cone`
+`1 − r`. Nibble 0 is a catch-all (patterntype 1, 2 — Square — and function graphs) drawn as the
+whole footprint (`fx.typeless_profile = rect`); 17 is unassigned. A name fixes the family; the
+curves of bell, thorn, brick, waves, half bell, ridged bell, crescent and capsule are
+modelled.
 
-The commonest baked values are `(5.0, 1.0)`, `(1.5, 1.5)`, `(3.0, 2.0)`, `(8.0, 1.25)` — all
-plausible, and note that **`patternsize` is not bounded by 1**; components of 5 and 8 are
-routine, so a size above 1 is not evidence of a units error. The baked path is clean, which
-means the entry layout of §8 — bit 7, bit 31, the extent — cannot produce a bad size. Bad
-sizes come from **program evaluation**.
+**`patternsize`** is in canvas units under the flat draw, region units under the tree, and
+**not bounded by 1** — `(5.0, 1.0)`, `(8.0, 1.25)` are routine baked values. An entry
+parameter is `baked` (the entry's own slots, §8) or a **program** evaluated per emission.
+Baked sizes are always sane (3,732 of 3,732 over 60 permitted specimens); bad sizes come
+from program evaluation only, and the skip rule removes them — 0.09% of patterns, not an
+amplitude cause (FORMAT-NOTES.md, "SPEC: where the format is read as individual bits"). A
+record's setup programs are already a fixed point, no entry reads another entry's write, so
+table order cannot matter, and no FX program reads an undeclared graph input; the reciprocal
+reading of a baked size is refuted (FORMAT-NOTES.md, "`patternsize`'s setup chain was never
+out of order"). Sizeless patterns are 1.9% corpus-wide, 18.3% on Auras. Open: the modelled
+curves, the tile lattice, and under the flat draw a cell rather than canvas unit for the
+offsets and size (`fx.patternsize`, `fx.branchoffset`, `fx.frameoffset`, default `canvas`).
+The `(5.0, 1.0)` two-entry family in five of the six reference packs is the −1 construct.
+The one sharp arbiter agrees: ChesterfieldSofa's `metallic` reproduces its export at MAE
+0.0004.
 
-This is subtractive, not corruptive. A renderer must skip a pattern whose size is
-non-positive, non-finite, or absurd (`> 64`, or `< 1e-6`; the corpus leaves a clean gap here,
-nothing between 1e-30 and 1e-06), so each failed evaluation silently *removes* a pattern
-rather than drawing it wrong.
-
-**Measured, it is negligible, and it is NOT the amplitude defect.** Over 12 specimens,
-351,135 patterns: 344,072 drawn, 319 dropped — 0.09%, of which 294 are `<= 0`, 19 below
-`MIN_SIZE`, 6 non-finite. On the three packs that actually show the deficit it is smaller
-still:
-
-| pack | patterns | drawn | sizeless | dropped |
-|---|---|---|---|---|
-| Bricks_and_tiles | 39,818 | 39,539 | 271 | 8 (0.02%) |
-| Auras | 4,317 | 3,529 | 788 | 0 |
-| Chesterfield | 131 | 123 | 8 | 0 |
-
-Bricks draws 39,539 of 39,547 sized patterns and its reference channels are still 5–8× too
-quiet (normal 0.13, height 0.185, AO 0.231 band). **So the deficit is not in the emission or
-in draw eligibility** — the patterns are emitted and they are drawn. It lies in per-pattern
-amplitude (profile, opacity, the combine rule) or downstream of the FX-Map entirely. A
-`patternsize` that fails to evaluate is a real defect and a small one; it should not be cited
-as an amplitude explanation.
-
-The **sizeless** population is twenty times larger than the dropped one — patterns carrying
-no `patternsize` at all, 1.9% corpus-wide but **18.3% on Auras** — and what a renderer should
-do with them is unsettled (§13.8).
-
-**`patternsize`'s coordinate space is NOT open, and this paragraph used to say it was.** It
-is a plain `[0,1]` canvas fraction. The reading it replaces — "a median footprint of 2.82
-unit squares over-covers the canvas by orders of magnitude on most records" — rested on a
-population of 1,521 records taken before the fx-walk extensions; over the 41,153 records
-that yield a drawable entry table today the median `patternsize.x` is **1.9217 in records
-that render flat and 1.9217 in records that render a picture**, identical to four decimals,
-and 6,346 records draw a picture at a `patternsize` above 2. Size still correlates with
-flatness (12.4% flat below 0.5 against 61.5% above 2) and is no longer the discriminator.
-
-Three "has not resolved" mechanisms were measured and all three are refuted: the record's
-setup programs are already a fixed point (143,106 programs, 0 that succeed on a re-run, 0
-slot values that move), there are **zero** cross-entry read-after-write pairs in the corpus
-so the table order cannot matter, and no FX program reads an undeclared graph input. The
-reciprocal reading of a *baked* `patternsize` is refuted at the reference arbiter — nine of
-ChesterfieldSofa's ten channels worse, `metallic`'s MAE 0.0010 → 0.8382 — where it was
-previously recorded as undecidable; see `tools/fxrender.py`'s negative result 5.
-
-**What IS open** is the drawing model the size feeds, which is a different list: the pattern
-profile for a given `patterntype`, the tile lattice, and — under the flat reading only —
-whether the offsets and the size are in cell units rather than canvas units
-(`tools/assume.py`'s `fx.patternsize`, `fx.branchoffset`, `fx.frameoffset`, all defaulting
-to `canvas`). Under the tree reading below the size and `frameoffset` are in REGION units
-and only `branchoffset`'s unit stays open. The `(5.0, 1.0)` two-entry baked family that
-appears in five of the six reference packs is the −1 construct above: a stroke five regions
-long, subtracted from a white canvas. On the one output with a sharp arbiter the
-render is already right: `ChesterfieldSofa`'s `metallic` reproduces the engine's own export
-at MAE 0.0004.
-
-**Subdivision — found, in the entry table and not in the nodes.** The two paragraphs this
-replaces reported it "not found": no node header has more than two children, and over 266
-FX-Map graphs in the permitted sources no node has more than one DISTINCT child. Both counts
-are right and both asked the wrong structure. A `paramset`'s four outputs are the four
-quadrants of its region, and in the permitted `SubstanceDesigner__Clouds_3_Animated` every
-one of the five chained `paramset`s that has children names the SAME child on `output0`,
-`output1`, `output2` and `output3` — one distinct child, four nestings. Its compiled record 50
-walks four bare `0x20008` cells and then the two draws, node for node. So the entry run of
-§8 is a nesting: each cell is a Quadrant, its bit-17 pointer is its child on all four
-outputs and its bit-16 pointers are one child per output. Half of Bricks' 191 FX-Maps nest
-(depths 3–9), 15 of them with per-output children; Chesterfield's `metallic`, the MAE-0.0004
-arbiter, sits on records of depth 0 and is unaffected.
-
-The draw model, as far as it is settled (FORMAT-NOTES.md, the three entries beginning "The
-level fault upstream of 10055", and "Quadrant subdivision lands in render2"):
+**Subdivision is in the entry table, not the nodes.** A `paramset`'s four outputs are the
+quadrants of its region; in the permitted `SubstanceDesigner__Clouds_3_Animated` each chained
+`paramset` names the same child on `output0`–`output3`, and compiled record 50 walks four bare
+`0x20008` cells and then the two draws. So the entry run of §8 is a nesting: each cell is a
+Quadrant, its bit-17 pointer its child on all four outputs, its bit-16 pointers one child per
+output. Half of Bricks' 191 FX-Maps nest (depths 3–9); Chesterfield's `metallic` is depth 0.
+The draw model (`render2/fxtree.py`; FORMAT-NOTES.md, the three entries beginning "The level
+fault upstream of 10055", and "Quadrant subdivision lands in render2"):
 
 - **The root does not subdivide.** The first cell's region is the canvas and so is its
-  children's; a cell at depth d ≥ 1 has region size 2^-(d-1). Two seed-free instruments:
-  879 of 1,146 sizeless leaves sit one level deeper than their record's size
-  (log2 size − depth = −1), and Bricks 9924 — `rand(1.0)` opacity under five Quadrants on a
-  16-px canvas — reads mean 0.513 / sd 0.292 / lag-1 −0.012 under this convention, which is
-  uniform white noise, against 0.80 / 0.16 under "the root subdivides" (four draws
-  max-combined per pixel).
+  children's. Region depth `k` is 0 for the root and its children, +1 per quadrant level;
+  region size is `2^−k` (nesting depth `d ≥ 1` ⇒ `k = d − 1`). Seed-free support: 879 of
+  1,146 sizeless leaves sit one level deeper than their record's size, and Bricks 9924
+  (`rand(1.0)` under five Quadrants, 16 px) reads mean 0.513 / sd 0.292 / lag-1 −0.012,
+  uniform white noise, against 0.80 / 0.16 if the root subdivides.
+- Output `j`'s child region is centred at the parent's centre `+ (±s/4, ±s/4)`, `s` the
+  parent's region size; `fx.tree.order = rowmajor`: 0 top-left, 1 top-right, 2 bottom-left,
+  3 bottom-right (`clockwise`, `colmajor` arms).
 - `patternsize` and `frameoffset` are in REGION units; a sizeless, non-marker cell fills its
-  region. A cell's programs are evaluated once PER REGION with a fresh `rand` draw;
-  `$number` stays the emission index.
-- **Open:** `branchoffset`'s unit (it offsets the cell's pattern and its children; the author
-  of Bricks 9804 halves it by hand per level, `rand(0.25), rand(0.125), …`, which argues
-  canvas units), which output is which quadrant, and `$pos` per region (§13.5's per-region
-  position is exactly what this implies and it is not yet threaded through). Graph 003 of
-  Bricks cannot separate any of these: every structural instrument moves less than the
-  renderer's own seed floor.
+  region (`fx.tree.bare = fill`). A cell's programs run once PER REGION with a fresh `rand`
+  draw; `$number` stays the emission index.
+- **Open:** `branchoffset`'s unit (`fx.tree.branchoffset = canvas`; it offsets the cell's
+  pattern and children, and Bricks 9804's author halves it by hand per level), the quadrant
+  order, and `$pos` per region (§13.5; not threaded through). The order shows only where a
+  cell's outputs name distinct children — 244 of 23,462 subdividing records, none in a
+  scored pack — so it needs a specimen pack with an export.
 
-`tools/render2/fxtree.py` draws the tree behind `assume.QUESTIONS['fx.subdivide']`, four
-arms: `flat` (the reading above this paragraph, still the default: the reference guards are
-floored on it), `noise`, `quadrant` and `tree`, with `fx.tree.branchoffset` and
-`fx.tree.order` for two further questions. **The arms partition.** Over 437 files and 41,164
-FX-map records, 23,462 subdivide; 2,242 of those are the 16-px `rand(1)` White Noise class
-and all 2,242 subdivide, so `noise` (that class alone) and `quadrant` (everything else)
-compose exactly to `tree`, and the dispatch touches only what it claims to — 122 of 122
-non-subdividing pack records are bit-identical under `flat` and `quadrant`.
-
-Re-measured against the full ratchet at 128/256/512, `noise` and `tree` are **refused**, and
-`tree` is strictly dominated: it fails more rows than `quadrant` and scores below it on the
-same packs, because its `noise` half cancels its `quadrant` half. There is no configuration
-in which `tree` is the right default and `quadrant` is not. `quadrant` lifts all four Bricks
-graphs and is refused on eight rows — Bricks `height` dc and four Chesterfield `basecolor`
-rows — both of which have since been traced to **gain at depth** rather than to subdivision,
-so the arm waits on that fault and is not withdrawn. A 22-record subset of it passes the
-ratchet with zero failures.
-
-`fx.tree.order` is **structurally undecidable on these packs**, which is a fact about the
-specimens and not about the instrument: the arm is only observable on a cell whose four
-output pointers resolve to more than one distinct child, and of 23,462 subdividing records
-just 244 (1.04%) contain one — **none of them in any scored pack**, RoofTiles included
-(0 of its 160 subdividing records, refuting the obvious nomination). Deciding it needs a
-specimen pack with an export, not a better measurement. `fx.tree.branchoffset` *is*
-observable (19,737 of 23,462 records carry one below the root) and still moves less than
-`CORR_MARGIN` on every deterministic pack at three grids.
+`fx.subdivide` chooses who draws the tree: `flat` (default: every entry once at full canvas,
+cells read as links), `noise` (the 16-px `rand(1)` White Noise class), `quadrant` (every other
+subdividing record) and `tree` (both; `noise` and `quadrant` partition it). A chain opening a
+`0x9`/`0x49` pointer-cell list is drawn by the tree under `fx.pointercell = switch` regardless.
+`noise` and `tree` are refused; `quadrant` waits on the gain at depth (FORMAT-NOTES.md,
+"`fx.subdivide` re-measured whole").
 
 ### 13.8 What the file does not state
 
-Three values the compiler omits when the source left the node at its default, so they are
-in neither the assembly nor the manifest. Any renderer needs them; every use should be
+The compiler omits a parameter the source left at its node default, so the default is in
+neither the assembly nor the manifest. Any renderer needs these values; every use should be
 marked, because they are the only numbers in it that come from outside the file.
 
-| value | used by | evidence |
-|---|---|---|
-| `channelsweights` | grayscale conversion | of 5,457 baked vectors corpus-wide the even weight `(⅓,⅓,⅓,0)` never appears, while its neighbours do — an argument from an absence |
-| `uniform` fill | uniform with class bit 24 clear | black; one specimen's `metallic` output is such a record and its export is exactly 0.0 at every pixel |
-| `levels` ranges | absent level fields | in `(0, ½, 1)`, out `(0, 1)` |
+| value | used by | reads as | evidence |
+|---|---|---|---|
+| `channelsweights` | grayscale conversion | `(⅓, ⅓, ⅓, 0)` | of 5,457 baked vectors the even weight never appears while its neighbours do — an argument from an absence |
+| `uniform` fill | a uniform with no `outputcolor` and no fill program | black | one specimen's `metallic` output is such a record; its export is 0.0 at every pixel |
+| `levels` ranges | absent level fields | in `(0, ½, 1)`, out `(0, 1)` | — |
+| `warp` intensity | 3.1% of warps | 1.0 | 0 of 26,108 compiled and 0 of 15 permitted-source intensities are 1.0; 0.5 and 2.0 occur |
+| `normal` intensity | 116 of 1,379 | 1.0 | 0 of 1,263 stated intensities are 1.0 |
+| `blur` intensity | 137 records, 81 files | 10.0 | stated once in 14,931; 8.0 at 21, 16.0 at 31 |
+| `dirmotionblur` intensity | 8 records | 10.0 | weaker: 10.0 and 5.0 both stated 0 times in 14,278; 10.0 is `blur`'s |
+| `sharpen` intensity | absent field | 1.0 | 0 of 1,148 stated; 0.5 at 59 |
+| `hsl` fields | absent fields | ½ each | the neutral value (§13.6) |
 
-`warp` and `normal` intensities are also omitted on some records (3.1% of warps, 116 of
-1,379 normals), and for those two the same argument from an absence applies: **1.0 is
-stated zero times** — of 26,108 compiled warp intensities and 15 in permitted sources, of
-1,263 stated normal intensities — with both neighbours (0.5, 2.0) present, while `blur`,
-the control, states 1.0 ten thousand times; an author who wants the default leaves the
-parameter alone, so the default is the value never typed. Both read as 1.0; every
-reference channel is inert to the value and the guard passes (§13.9). `blur`'s omitted
-intensity (137 corpus records, 81 files) reads as **10.0** by the same mechanism: 10.0
-is stated once in 14,931 baked blur intensities with 8.0 at 21 and 16.0 at 31 beside it
-(1.0, once a candidate here, is stated 10,200 times); `sharpen`'s 1.0 (0 of 1,148, 0.5 at
-59) is the mechanism's fourth agreement. The one reference picture that holds such a
-blur (RoofTiles 2190, on the tile-colour chain to `basecolor`) cannot arbitrate the
-value: at 256 and at the 2048 export `basecolor` is the same under 0.0, 0.5, 1.0, 4.0 and
-10.0 to three digits, because the chain the blur sits on is a `warp` (2203) whose source
-was blank until the leaf count above and stays within the picture's noise after it; what
-the flip changes is that the channel is scored at all. `dirmotionblur`'s 8 omitted
-intensities read as 10.0 too, on a weaker footing: 10.0 and 5.0 are both stated 0 times
-in 14,278, so the signature names two values, and 10.0 is the one `blur`'s names (the
-reading before was 0.0, a no-op, which is certainly not the engine's).
+The intensity rows rest on one mechanism: an author who wants the default leaves the
+parameter alone, so the default is the round value **stated zero times** beside stated
+neighbours — `blur`, the control, states 1.0 over ten thousand times (FORMAT-NOTES.md,
+"Permitted sources corroborate `warp` default = 1.0"; "`blur`'s omitted intensity is 10.0").
+Every reference channel is inert to the `warp` and `normal` values (§13.9); none can
+arbitrate `blur`'s.
 
 A record whose arithmetic produces a non-finite sample (an Auto Levels dividing 0/0 on a
-constant input — a max/min pyramid over an image that is one value) writes **0** there:
-every node's output is a texture, and IEEE NaN converts to 0 in a UNORM texture. Mark the
-record.
-
-Three filters have no located parameters at all and run at defaults everywhere — `sharpen`
-(41 records sampled, 0 located), `hsl` (25, 0) and `text`. Naming their fields is the
-obvious next increment and needs only §13.4 rows, not new machinery.
+constant input) writes **0** there: every node's output is a texture, and IEEE NaN converts
+to 0 in a UNORM texture. Mark the record.
 
 **The seed.** `$randomseed` is a graph input with a manifest default, and an export may be
-taken at any other value that is written down nowhere: `Kutejnikov__Bricks_and_tiles` ships
-two export sets from byte-identical packages whose randomised graphs correlate +0.02..+0.10
-with each other. And the compiled `rand` is a sequence the engine draws; this document's
-hash of `$number` and a per-region salt reproduces its statistics and can never reproduce
-its values. So for any record downstream of a `rand` — every subdivided FX-Map in Bricks
-calls one — pixel agreement with an export measures the seed, not the reader. §13.9 is the
-consequence.
+taken at any other value, written down nowhere: `Kutejnikov__Bricks_and_tiles` ships two
+export sets from byte-identical packages whose randomised graphs correlate +0.02..+0.10. And
+the compiled `rand` is a sequence the engine draws; this document's hash of `$number` and a
+per-region salt reproduces its statistics, never its values. So for any record downstream of
+a `rand` — every subdivided FX-Map in Bricks calls one — pixel agreement with an export
+measures the seed, not the reader. §13.9 is the consequence.
 
 ### 13.9 Arbitrating without the seed
 
@@ -2408,136 +1737,65 @@ channel with its own measured floor:
 | `tone_between` / `tone_within` | sd of per-blob means / mean per-blob sd — the tone per brick and the texture inside one | ±0.004 |
 | `grain`, `noise_lag1` | power above half Nyquist; lag-1 autocorrelation (0 for white noise) | — |
 
-Three uses, in the order they decide things:
+The renderer-side floor is measured by reseeding every draw. Uses, in the order they decide
+things (FORMAT-NOTES.md, "Structural instruments: what a picture states about its nodes"):
 
-1. **The file against itself, no export.** A `rand(1.0)` leaf at one cell per pixel must
-   read mean 0.50 / sd 0.29 / lag-1 0; a record's own canvas states the cell size its author
-   expected (§13.7's 879 of 1,146). These settled the root convention and cost nothing.
-2. **Level and structure against an export, with the floor as resolution.** Over Bricks'
-   three randomised graphs, an export taken at a second seed moves mean by 1.0% (median),
-   p50 1.3%, p95 0.3%, sd 4.9% — and octave band shares by 18–58%, so spectral shape is a
-   discriminator only for moves larger than an octave. The same numbers on 003's height
-   name the next four faults outright: mortar 4 px against the reference's 6, edge jitter
-   1.2 against 2.0, brick texture 0.12 against 0.054, mortar floor p5 0.16 against 0.30 —
-   none of them the subdivision's, since they stand in every variant.
+1. **The file against itself, no export.** A `rand(1.0)` leaf at one cell per pixel must read
+   mean 0.50 / sd 0.29 / lag-1 0; a record's own canvas states the cell size its author
+   expected (§13.7's 879 of 1,146).
+2. **Level and structure against an export, the floor as resolution.** An export at a second
+   seed moves Bricks' mean by 1.0% (median), p50 1.3%, p95 0.3%, sd 4.9%, and octave band
+   shares by 18–58%, so spectral shape discriminates only moves larger than an octave. Bricks'
+   second export set is not a pure reseed (row pitch 32 px in one, 42–43 in the other), so it
+   bounds the reference-side floor from above.
 3. **Pixel correlation only where structure survives a reseed** (Bricks 004 and 005, +0.80
-   to +0.99 between the two export sets), and only as a regression guard: a variant may
-   not cost more than 0.03 there. The graphs' subdivided records supply detail, not layout,
-   so they cannot arbitrate offset units or quadrant order; that needs a graph whose layout
-   IS a subdivided record.
-
-One caution the instruments themselves supplied: Bricks' second export set is not a pure
-reseed — 002's and 003's row pitch is 32 px in one and 42–43 in the other — so that pair
-bounds a reference-side seed floor from above; the renderer-side floor in the table is
-measured directly by reseeding every draw.
-
-Two more instruments and a rule, added after the eleven readings below were decided:
-
-4. **Per tile** (`structstats.py --tiles`): the graph's own tile mask (edge 0 of its
-   13.86-px `distance` tone node) segments the picture; inside each tile a plane is fitted
-   to the height and its change across the tile (`|grad| × √area`) reported with the mean
-   on tiles and the mean in the mortar. What a draw model puts INSIDE a cell survives a
-   per-cell random direction that pixel correlation cannot: Bricks' Flood-Fill-to-Gradient
-   ramps every tile with an angle drawn once per cell from a hash the file does not state,
-   so a reading that draws the ramp scores BELOW one that omits it on correlation while
-   matching the export's tilt (0.226 against 0.228 on 004) and tile level (0.622 against
-   0.622) to the third decimal.
+   to +0.99 between the export sets), and only as a regression guard: a variant may not cost
+   more than 0.03 there. Their subdivided records supply detail, not layout, so they cannot
+   arbitrate offset units or quadrant order.
+4. **Per tile** (`structstats.py --tiles`): the graph's own tile mask segments the picture;
+   per tile a plane is fitted to the height, its change across the tile (`|grad| × √area`)
+   reported with the tile and mortar means. It reads what a draw model puts INSIDE a cell
+   through a per-cell random direction correlation cannot (FORMAT-NOTES.md, "The corr guard's
+   objection to `spread` is the rand hole").
 5. **The native row** (`archive/tools/nativeguard.py`): every pack at its implied
-   `$outputsize` with no grid cap. A capped grid is a lie every texel-dependent construct
-   hears differently — a flood fill's seed pass finds no edge, a `256/min($size)` blur is
-   the identity at one grid and a pixel at the next, a jump flood's `blend` switch
-   selectors count passes for the export while its pixel processors step the grid — and
-   there is no one `$size` reading that is right under a cap (the declared size is the
-   faithful downsample, the grid the only reading under which a texel machine runs). At
-   native every deterministic Bricks graph scores 0.02–0.06 higher than at 256 and
-   Chesterfield 0.06 higher; those were the guard's own grid artefacts. It scores through
-   `render2-lean`, and must: once `graph.outputsize = pergraph` became the default this row
-   is genuinely at native on every graph, and the ordinary whole-file pass holds 112 GB on
-   Bricks and 58 GB on Chesterfield. Its graph-input overrides are installed on all three
-   bindings of `render` — `engine.py` is loaded twice, as `engine` and as `render2.engine` —
-   and counted, because a patch on one binding is inert under a renderer that calls the
-   other. See FORMAT-NOTES.md, "`nativeguard.py` was scoring through the NON-lean renderer".
+   `$outputsize`, no grid cap. Every texel-dependent construct hears a capped grid differently
+   — a flood fill's seed pass finds no edge, a `256/min($size)` blur is the identity at one
+   grid and a pixel at the next — and no one `$size` reading is right under a cap. It scores
+   through `render2-lean`, its graph-input overrides installed on every binding of the
+   renderer (FORMAT-NOTES.md, "`nativeguard.py` was scoring through the NON-lean renderer").
+
+**The score** is taken from ONE render at the pack's implied `$outputsize`, resampled to 128 /
+256 / 512 — not three renders at three `max_dim`s. The companion instrument takes its tile
+labels from the EXPORT's own normal map (the height is unimodal and cannot), so its reference
+side does not move with the renderer (FORMAT-NOTES.md, "The companion instrument rebuilt on
+EXPORT-derived labels").
 
 **The rule for a default.** A reading becomes the default when it passes the ratchet —
 `test_render2_reference_agreement_does_not_regress`, per row on corr, band and dc at 128 /
-256 / 512, against bounds taken when the row was first scored — and the old reading is
-kept as a named arm. Per-pack mean correlation is not the ratchet: it hid the loss of a
-whole AO channel (Chesterfield's, band 0.0007) behind +0.887. **A correlation floor may
-be re-taken lower under a companion instrument** (`refguard.Entry.companion`): a
-seed-free measurement of the same channel that a per-cell random draw in the picture
-cannot move — Bricks' per-tile tilt and level, the pillow profile, the band power in the
-octaves the reading acts on — guarded by its own test (`COMPANION_INSTRUMENTS`), with
-the replaced bound kept as history; the correlation is still ratcheted from the re-taken
-value. Under that rule these twenty-two readings are the defaults, each with the section that
-arbitrated it in FORMAT-NOTES.md: `transformation.matrix = columns`;
-`pixelprocessor.outputsize = grid` for canvas-sized records; `warp.default_intensity =
-1.0`, `normal.default_intensity = 1.0`, `blur.default_intensity = 10.0`,
-`dirmotionblur.default_intensity = 10.0`, `nonfinite.fill = 0.0` (§13.8);
-`blur.reference_px = 256` (§13.6: graph 001's stones exist under it and under nothing
-else; the ratchet passes, the other four packs are bit-identical, and its nine rows are
-scored for the first time); `distance.propagate = spread` (§13.6; on the companion instruments — per-tile level 0.58
-against the export's 0.62 where `field` reads 0.83, tilt 0.21 against 0.23 where `field`
-reads 0.05, the pillow's edge 0.459 against 0.457, the band at 1–8 cycles 0.9–1.6 of the
-export's on all four graphs where `field` reads 0.05–0.12 — and 33 Bricks correlation
-floors re-taken under it, the loss being the Flood Fill to Gradient's per-tile random
-direction); `fx.leafcount = header` (§13.7 — a corpus-wide structural
-reading, bit-identical on Bricks, RoofTiles band 1.36 → 1.39); `fx.header = read`
-(RoofTiles +0.441 → +0.491, its roughness −0.03 → +0.26 with the dc 0.151 → 0.060; Bricks
-+0.674 → +0.675, its 256-px objection of an earlier session was the grid's, and it passes
-the ratchet now); and the eight Bricks readings the graph-001 sections verified —
-`fx.chain = tree`, `program.select = lazy`, `pixelprocessor.rand = pixel`,
-`pixelprocessor.sample = nearest`, `fx.brick = fill`, `fx.negopacity = signed`,
-`fx.pointercell = switch` (§8, the `0x9`/`0x49` list as baked switches — structural, the ratchet packs bit-identical), `fx.combine = max` (the combine for every entry, declared or not — under `bit18`'s signed add on an undeclared entry Bricks' dirt splatter summed its overlaps and 28% of the canvas passed a 0.29 cut where the export's spots cover a few percent; under `max` 6% does, and the file's own arithmetic lands the tiles' level and top on the export's), `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
-alone it turns 10081's row-start count into 2³¹ − 1). Refused by the same rule and kept as
-arms: `distance.propagate = field` (the reading before `spread`: tiles a third of the way
-to white, no per-tile tone), `fx.subdivide = tree` (one record, 708, whose Quadrant
-leaves emit sparsely under a 0.29 step; and at native its noise is blotches where the
-export has grain), `blur.subpixel = fractional` (within 0.004 of the defaults at native,
-worse at 256) and `fx.gridnamed = branchoffset` (inert on every pack: the leaf-only chains that
-spell a grid in their entry's `branchoffset` program take the leaf's count instead).
-`fx.pointercell = switch` is a default on the structure alone, as `fx.leafcount` is:
-59 of 60 corpus lists carry exactly one `0x49`, the paired source compiles `Grid_Number`
-0 to a lone `0x49` four times, the ratchet packs carry no such record and are bit-identical
-under both arms, and SandyStonePath — the one pack that does — cannot arbitrate it while
-its sand sits below its tiles at the declared inputs (FORMAT-NOTES.md, "The `0x9`/`0x49`
-pointer-cell list is the library Splatter's `Grid_Number`").
+256 / 512, against bounds taken when the row was first scored — and the old reading is kept
+as a named arm. Per-pack mean correlation is not the ratchet: it hid the loss of a whole AO
+channel (Chesterfield's, band 0.0007) behind +0.887. **A correlation floor may be re-taken
+lower under a companion instrument** (`refguard.Entry.companion`) — a seed-free measurement
+of the same channel that a per-cell random draw cannot move (Bricks' per-tile tilt and level,
+the pillow profile, the band power in the octaves the reading acts on), guarded by its own
+test (`COMPANION_INSTRUMENTS`), the replaced bound kept; correlation is then ratcheted from
+the re-taken value. The effective default is the CALL SITE's: `assume.assumed(key, default)`
+returns `default`, so promoting an arm means changing its call sites, not only
+`assume.QUESTIONS`.
 
-Three arms added since, all default-off and all proven inert at their default before being
-recorded here. `fx.hurst.depth = root | firstdraw` — where the hurst exponent starts
-counting, from the record's root or from its shallowest **drawing** cell. `root` stands, and
-for once the pictures, the octave bands and the ratchet all say the same thing: `firstdraw`
-prints the subdivision lattice into the image (pixel-blocky speckle, axis-aligned plateaus
-where whole regions saturate at the clamp), crackles every Bricks 003 channel, overshoots
-the finest octave by 11–362× and fails 33 ratchet rows against `quadrant`'s 8. A reading
-whose artefacts are the shape of its own subdivision is wrong on its face. Note the corpus
-context that makes the question worth asking at all: 23,462 of 23,462 subdividing records
-have their deepest cell **draw**, and for the 13,267 baking a non-zero `hurst` the gain
-2^(−h·depth) at that level has median **0.041** — the default reading puts the median
-record's always-present deepest drawing level at 4% of its stated opacity.
+The defaults, by the section that states them (each arbitrated in FORMAT-NOTES.md):
 
-`graph.outputsize = pergraph | first` — §13.3's per-graph `$outputsize` inputs.
-**`pergraph` is now the DEFAULT**, which took re-taking every floor it touched. The blocker
-was one row, Bricks 005/roughness, reading +0.6456 against a 0.77 floor — and that turned out
-to be an artefact of the sweep rather than of the arm (§13.3, the `max_dim` trap). Re-taken
-from renders at each pack's own implied `$outputsize`, all 52 entries re-recorded and every
-`was` left untouched, **19 of 19 enforced floors clear** and that row reads +0.8450. Note for
-anyone promoting an arm after this one: flipping the tuple in `assume.QUESTIONS` is not
-enough, because `assumed(key, default)` returns the CALL SITE's default — `engine` carried
-its own `"first"` and had to be changed too.
+| section | defaults |
+|---|---|
+| §13.2 | `graph.outputsize = pergraph` (every floor it touched re-taken; FORMAT-NOTES.md, "STATUS: the re-take is done") |
+| §13.6 | `transformation.matrix = columns`; `pixelprocessor.outputsize = grid`, `.rand = pixel`, `.sample = nearest`; `blur.reference_px = 256`; `warp.reference_px = tag`; `dirmotionblur.extent = total`; `distance.propagate = spread` (33 Bricks correlation floors re-taken under it) |
+| §13.7 | `fx.leafcount = header`; `fx.chain = tree` with `program.select = lazy` (without `lazy` it turns 10081's row-start count into 2³¹ − 1); `fx.header = read`; `fx.combine = max`; `fx.negopacity = signed`; `fx.hurst = exp`; `fx.hurst.depth = root`; `fx.brick = fill`; `fx.halfbell = gaussian` |
+| §13.8 | `warp.default_intensity = 1.0`, `normal.default_intensity = 1.0`, `blur.default_intensity = 10.0`, `dirmotionblur.default_intensity = 10.0`, `nonfinite.fill = 0.0` |
+| §8 | `fx.pointercell = switch`, on the structure alone as `fx.leafcount`: the ratchet packs carry no such record (FORMAT-NOTES.md, "The `0x9`/`0x49` pointer-cell list") |
 
-Two consequences of that re-take are properties of the SCORE rather than of the format, and
-both are now how the guard works. A reading is taken from ONE render at the pack's implied
-`$outputsize`, resampled down to 128/256/512 — scoring three `max_dim` values was never a
-resolution sweep, it was three mis-scalings. And the companion instrument, the only
-sanctioned route by which a correlation floor may be lowered, now takes its tile labels from
-the EXPORT's own normal map: labelling from a record of our own render made the reference
-side a function of our renderer, and correcting the clamp moved graph 003's *export* tilt
-from a recorded 0.2006 to 0.047. The height cannot supply those labels — it is unimodal,
-each face's gradient overlapping the mortar — which is why the original reached for a render
-record at all.
-
-Also corrected rather than added: `fx.hurst`'s `exp2` arm (2^(−2·h·depth), the exponent per
-**area** halving) had never actually run — `_gain` branched `exp` and fell everything else
-through to `pow`, making `exp2` a silent duplicate of it. No recorded measurement quoted an
-`exp2` result, so nothing published was invalidated, but the arm described in `assume.py`
-and the arm the code ran were different arms.
+Refused and kept as arms: `distance.propagate = field` (tiles a third of the way to white, no
+per-tile tone), `fx.subdivide = tree` and `noise` (§13.7), `blur.subpixel = fractional`
+(within 0.004 of the defaults at native, worse at 256), `fx.gridnamed = branchoffset` (inert:
+leaf-only chains that spell a grid in `branchoffset` take the leaf's count) and
+`fx.hurst.depth = firstdraw` (it prints the subdivision lattice into the image; FORMAT-NOTES.md,
+"`fx.hurst`'s depth origin decided by LOOKING").

@@ -64256,3 +64256,41 @@ AO max 0.24 on 0.04% of pixels), mean |d| <= 2.3e-5 everywhere; Auras max 1.7e-5
 
 `test_filters` 22 (non-ratchet), render2 suites 43, fast lane 19. The kernels are
 `cache=True`: the first run after an edit to `fxjit.py` pays ~10 s of compilation.
+
+## SPEC.md cleaned: 2,543 -> 1,801 lines, every rule kept, evidence moved to pointers here -- and the "trailer" is a 16-byte footer whose "unexplained" words are the last input descriptor
+
+Owner's request, 2026-09-28. SPEC.md had become a second lab notebook: evidence tables and
+argument paragraphs in table cells, history phrasing ("this was stated here as ...", "an earlier
+row here called it ..."), and statements the code had moved past. Rewritten section by section
+against the code (`tools/`, `render2/`, `assume` call-site defaults, which are the effective
+ones -- `spec_defaults.txt` in `~/Documents/cleanroom-substance-runs/spec_cleanup/`, with the four
+per-part reports). Section numbers unchanged; 0 dangling `§` references; 119 FORMAT-NOTES
+pointers, every one resolving to a heading. OPCODES.md got a light pass.
+
+CONTRADICTIONS AND STALE RULES FIXED, the ones a reader would have built wrong:
+  - §6.2 said class "bit 10 is `$outputsize` (integer2, 2 words)". Class bits are numbered by
+    their word0 position: 16 is `$outputsize` (one word, a size-program pointer), 23
+    `$randomseed`, 26/27 `$pixelsize` (baked float2 / program). "Bit 10" was class-word-relative
+    = word0 bit 26 = `$pixelsize`. `tools/walk.py` carried the same misname in comments (its
+    widths were right); fixed.
+  - §6.3: only `0xFFFFFFFF` is an absent edge; 0 is record 0.
+  - §13.1: ids 5 (`vectorshape`) and 17 (`text`) ARE evaluated; only 9 is not.
+  - §13.6: `ref` is the TAG width (`warp.reference_px = tag`); `dirmotionblur` has no `x10`;
+    `fx.halfbell = gaussian`; §13.7: the FX canvas is `fx.centre = reach`, not a torus;
+    `fx.combine = max` for every entry; `0x20B` is a leaf; `0x??1B` owns no program.
+  - §13.8 no longer claims three filters lack a legend row (sharpen, hsl and text are named).
+  - §2: header 0x1C is `filesize - 28` as a PLAIN offset, 437 of 437 (skewed: 0).
+
+THE FOOTER, measured here on all 437 files. The spec's seven-word "trailer" at `filesize - 28`
+is a 16-byte footer -- `(record count, dir start - 52, dir end - 52, table start - 52)`, word 0 =
+the record count on 437 of 437, where the spec called it "a pointer, 99% valid" (a small count
+plus 52 always lands inside the file) -- preceded by the input-descriptor array's tail:
+"word 1, small enum, unexplained" is the LAST input's type (437 of 437), "word 2" its uid (437
+of 437), "word 0" the previous input's uid (411 of 411 files with two or more inputs). §4 and
+§11 now say so.
+
+Left as found, reported: `fx.gridcount` and `normal.inversedy` have a call-site default that is
+not their `QUESTIONS` first candidate (`divisor` vs `numberadded`, `field1` vs `ignore`); the
+call site is what runs. Stale code comments: `sbsasm.node_shape` (0x1DB, bit 6), `leaf_successor`,
+`fxchain`'s SCOPE note, `fx_table`'s FX_PAYLOAD_PROG count. `decompose` does not apply `text`'s
+`w1` order (render2 does; 14 records).

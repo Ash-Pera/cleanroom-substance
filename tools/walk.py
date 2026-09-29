@@ -9,8 +9,9 @@ mask; a writer emits in the same order.
 
 This file implements that walk ONCE and drives it with a per-filter spec whose only
 numbers are integer field widths taken from a WIDTH LEGEND. The legend is seeded from the
-manifest's parameter type codes -- `$outputsize` is `type="8"` (integer2), two components,
-which is why the inherited-parameter that class-word bit 10 gates costs two words. No float
+manifest's parameter type codes. Class-word bit 10 (word0 bit 26) costs two words because it
+is the baked `$pixelsize`, a float2 -- NOT `$outputsize`, as this prototype first named it:
+`$outputsize` is word0 bit 16, one word, a pointer to its size program (SPEC.md §6.2). No float
 is fitted anywhere here, and the walk fails loudly (raises `Overrun`) rather than guessing
 when it cannot land inside the record the directory framed.
 
@@ -137,8 +138,9 @@ def _field_width(kind, code, colour):
     return 1  # baked scalar (Float1)
 
 
-# The class-word inherited-parameter block. Bit 10 is `$outputsize` (integer2, width 2
-# from the legend); the other four inherited parameters are one word each. This is the
+# The class-word inherited-parameter block, numbered from the class word's own bit 0 (word0
+# bit 16). Bit 10 (word0 bit 26) is the baked `$pixelsize`, a float2 -- two words; bit 0 is
+# `$outputsize`'s program pointer and bit 7 `$randomseed`'s, one word each (SPEC.md §6.2). This is the
 # same set of bits `_compute_layout`'s `g` sums -- but as widths from the legend, not a
 # fitted `2 * bit`.
 _CLS = {0: 1, 7: 1, 10: 2, 11: 1, 13: 1}
@@ -720,7 +722,7 @@ def main(argv):
     leg = legend_from_manifest(xml0)
     print("width legend seeded from %s" % os.path.basename(xml0))
     print(
-        "   type 8 ($outputsize) -> %d words   (class-word bit 10 costs %d)\n"
+        "   type 8 (integer2) -> %d words   (class-word bit 10, baked $pixelsize, costs %d)\n"
         % (leg.get(8, 0), _CLS[10])
     )
 

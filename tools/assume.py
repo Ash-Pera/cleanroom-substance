@@ -14,8 +14,9 @@ QUESTIONS = {
     "blur.intensity": ("program", "slot3"),
     # THE PIXEL SCALE OF `blur`'S INTENSITY: 256 fixed (the `256 / min($size)` idiom is
     # "one pixel at any size" only under this; Bricks graph 001's flood fill lives on it)
-    # or `record`, the record's own width, which `warp` / `dirmotionblur` / `directionalwarp`
-    # keep (`warp.reference_px`; Chesterfield's Blur HQ passes flatten the AO otherwise).
+    # or `record`, the record's own width (Chesterfield's Blur HQ passes flatten the AO
+    # otherwise). `warp` / `dirmotionblur` / `directionalwarp` have their own scale,
+    # `warp.reference_px`, whose default is the record's TAG width.
     "blur.reference_px": (256.0, "record", 128.0, 512.0),
     "warp.reference_px": (
         # `tag` IS THE DEFAULT: the record's TAG width -- what `record` meant when it was
@@ -339,14 +340,10 @@ QUESTIONS = {
     # at 256 against 1024 exports, blind above 128 cycles. `pergraph` sets them all and
     # unpins the file (Bricks: 2,342 -> 11,943 of 12,585 records move off their tag at
     # $outputsize 1024, and 003's four outputs reach 1024x1024).
-    # THE EVIDENCE FAVOURS `pergraph` AND THE DEFAULT IS STILL `first`, because the 42
-    # guard rows on those two packs were every one of them taken under `first` and the
-    # ratchet may not lower a floor: `pergraph` moves 114 of the 183 guard readings and
-    # fails 26 (key, quantity) pairs, all Bricks, while improving Bricks' mean |dc| at
-    # every grid (0.0455/0.0410/0.0409 -> 0.0367/0.0363/0.0369) and its mean corr at 512
-    # (+0.6821 -> +0.7321). Chesterfield, a single-graph file, is bit-identical under
-    # both. Promoting it is a decision to RE-TAKE those floors, not a bug fix to slip in.
-    # See FORMAT-NOTES.md, "ROOT CAUSE: a multi-graph package has ONE `$outputsize`".
+    # `pergraph` IS THE DEFAULT, promoted by re-taking the guard floors at 7658f42 (it
+    # moved 114 of 183 guard readings; Chesterfield, a single-graph file, is identical
+    # under both). `first` is the reading before, an arm. See FORMAT-NOTES.md, "ROOT
+    # CAUSE: a multi-graph package has ONE `$outputsize`" and "STATUS: the re-take is done".
     "graph.outputsize": ("pergraph", "first"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
