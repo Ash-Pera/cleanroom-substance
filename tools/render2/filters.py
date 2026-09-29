@@ -577,6 +577,18 @@ def f_transformation(ctx, v):
         axis=-1,
     )
     src = np.asarray(ctx.src(v, 0))
+    if (
+        SHIFTED_TAPS
+        and tuple(float(x) for x in m) == (1.0, 0.0, 0.0, 1.0)
+        and src.ndim == 3
+        and src.shape[:2] == (H, W)
+    ):
+        # AN IDENTITY MATRIX IS A SHIFT, and it is 92% of Bricks' 2,639 transformations
+        # (842 with no offset at all, 1,592 offset-only, most by a whole pixel). `in_pos` is
+        # then `pos + off`, which `_shift_lerp` reads as rolls instead of a gather.
+        return _shift_lerp(
+            src.astype(np.float32, copy=False), float(off[0]) * W, float(off[1]) * H
+        )
     scale = footprint_scale(m, W, H, src.shape)
     if scale >= 2.0:
         src = prefilter(src, scale)
@@ -984,6 +996,66 @@ def f_sharpen(ctx, v):
     return np.clip(src + amount * (src - _box(src, 1)), 0.0, 1.0)
 
 
+#: Toggle for `_dirmotion_shifted`, so the per-pixel sampler path it replaces can be A/B'd
+#: against it in one process.
+SHIFTED_TAPS = True
+
+
+def _constant(a):
+    """A parameter that is one number: a scalar, or an (N, 1) field whose rows all agree.
+    `_scalar` broadcasts program-valued parameters to a field even though none of them
+    read `$pos` (see its note), so size alone would send nearly every record the slow way."""
+    a = np.asarray(a)
+    return a.size == 1 or bool(a.min() == a.max())
+
+
+def _shift_lerp(img, dx, dy):
+    """`img` read at (x + dx, y + dy) pixels, bilinear and wrap-tiled -- what `sampler`
+    returns for `pos_grid + (dx / W, dy / H)` on an image already at the render grid,
+    computed as three rolls and two lerps instead of a million-point gather."""
+    ix, iy = math.floor(dx), math.floor(dy)
+    fx, fy = np.float32(dx - ix), np.float32(dy - iy)
+    a = np.roll(img, (-iy, -ix), axis=(0, 1))
+    if fx == 0 and fy == 0:
+        return a  # a whole-pixel shift (or none): the roll IS the answer, and a copy
+    if fy == 0:
+        top = np.roll(a, -1, axis=1)
+        top -= a
+        top *= fx
+        top += a
+        return top
+    top = np.roll(a, -1, axis=1)
+    top -= a
+    top *= fx
+    top += a
+    bot = np.roll(top, -1, axis=0)
+    bot -= top
+    bot *= fy
+    bot += top
+    return bot
+
+
+def _dirmotion_shifted(src, length, turn, taps):
+    """`f_dirmotionblur` when its length and angle are CONSTANT and its input is at the
+    render grid: every tap is then the whole image shifted by one sub-pixel offset.
+
+    NOT BIT-IDENTICAL to the sampler path, by design (owner, 2026-09-28: speed does not need
+    bit-equality): float32 throughout where the sampler promoted to float64, and the offset
+    is added in pixels rather than to each float32 pixel centre, so the fraction no longer
+    carries per-pixel rounding. It was 30% of a native Bricks render -- 264 records, 17
+    million-point gathers each (FORMAT-NOTES.md, "the renderer, profiled")."""
+    H, W = src.shape[:2]
+    L = float(np.asarray(length).ravel()[0])
+    t = float(np.asarray(turn).ravel()[0])
+    img = src.astype(np.float32, copy=False)
+    acc = np.zeros(img.shape, np.float32)
+    for k in range(taps):
+        f = (k / (taps - 1.0)) - 0.5
+        acc += _shift_lerp(img, L * f * math.cos(t) * W, L * f * math.sin(t) * H)
+    acc /= np.float32(taps)
+    return acc
+
+
 @filt("dirmotionblur")
 def f_dirmotionblur(ctx, v):
     W, H = v.size(ctx.cap)
@@ -1047,8 +1119,17 @@ def f_dirmotionblur(ctx, v):
         # Auras. See FORMAT-NOTES.md, "The large-blur fit".
         length = np.clip(np.abs(intensity), 0.0, 256.0) * 8.0 / float(W)
     turn = 2.0 * np.pi * angle
-    smp = sampler(ctx.src(v, 0))
     TAPS = 17
+    src = np.asarray(ctx.src(v, 0))
+    if (
+        SHIFTED_TAPS
+        and src.ndim == 3
+        and src.shape[:2] == (H, W)
+        and _constant(length)
+        and _constant(turn)
+    ):
+        return _dirmotion_shifted(src, length, turn, TAPS)
+    smp = sampler(src)
     acc = None
     for k in range(TAPS):
         f = (k / (TAPS - 1.0)) - 0.5

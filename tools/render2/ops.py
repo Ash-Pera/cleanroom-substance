@@ -140,6 +140,17 @@ def _fast_sampler(image):
 
     def sampler(pos):
         pos = np.asarray(pos)
+        if pos is grid:
+            # THE IMAGE'S OWN PIXEL CENTRES, IN ORDER. The gather below would read
+            # `base[0], base[1], ... base[N-1]` -- the array itself, row-major -- so this
+            # returns it directly and skips the scale, the two floors, the two casts, the
+            # masks and the gather. `astype` COPIES (it is not `copy=False`): every other
+            # path here hands back a fresh array, and returning a view into a record's
+            # stored output instead would alias two records' pixels together the moment
+            # any caller wrote through it. TESTED FIRST, before any index arithmetic: it
+            # used to sit after the floors and casts it skips, so the commonest call paid
+            # for them anyway (2026-09-28 profile: this closure was 40% of a Bricks render).
+            return base.astype(_grid_result_type(base.dtype), copy=True)
         u = pos[:, 0] * W - 0.5
         v = pos[:, 1] * H - 0.5
         fu0 = np.floor(u)
@@ -152,15 +163,6 @@ def _fast_sampler(image):
         else:
             u0m = u0 % W
             v0m = v0 % H
-        if pos is grid:
-            # THE IMAGE'S OWN PIXEL CENTRES, IN ORDER. The gather below would read
-            # `base[0], base[1], ... base[N-1]` -- the array itself, row-major -- so this
-            # returns it directly and skips the scale, the two floors, the two casts, the
-            # masks and the gather. `astype` COPIES (it is not `copy=False`): every other
-            # path here hands back a fresh array, and returning a view into a record's
-            # stored output instead would alias two records' pixels together the moment
-            # any caller wrote through it.
-            return base.astype(_grid_result_type(base.dtype), copy=True)
         if np.all(u == fu0) and np.all(v == fv0):
             fdt = np.result_type(u.dtype, np.int64)  # what `u - u0` would have been
             return base[v0m * W + u0m].astype(
@@ -179,9 +181,22 @@ def _fast_sampler(image):
         b0 = base[r0 + u1m]
         a1 = base[r1 + u0m]
         b1 = base[r1 + u1m]
-        top = a0 + (b0 - a0) * fu
-        bot = a1 + (b1 - a1) * fu
-        return top + (bot - top) * fv
+        # `top = a0 + (b0 - a0) * fu`, `bot` likewise, `top + (bot - top) * fv` -- IN PLACE,
+        # and the same bits. Each step keeps the dtype the expression had (`b0 - a0` in the
+        # image's dtype, the product promoted by `fu`); the only reordering is `x + a` for
+        # `a + x`, which IEEE addition makes exact. The expression form allocated ~10 N x C
+        # float64 temporaries a call, and at 1024 that churn was most of a Bricks render's
+        # system time (163 s of 586, 1.7 M page faults; 2026-09-28).
+        b0 -= a0
+        top = b0 * fu
+        top += a0
+        b1 -= a1
+        bot = b1 * fu
+        bot += a1
+        bot -= top
+        bot *= fv
+        bot += top
+        return bot
 
     return sampler
 

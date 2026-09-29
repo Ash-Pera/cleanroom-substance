@@ -64174,3 +64174,54 @@ grids, 0 constant yields, 21 quantities outside a health bar as recorded -- the 
 unchanged (`spokes_0928/ratchet_halfbell_default.log`, 700 s); fast lane 19; `test_fxtree` 8;
 `test_the_new_guard_does_not_weaken_the_old_floors` passes. `fx.tree.bare`'s hunks stay out
 of this commit, as before.
+
+## The renderer, profiled: one native Bricks render was 40% one sampler closure, and three changes halve it -- `dirmotionblur` and identity `transformation` as whole-image shifts. NOT bit-identical, by the owner's rule
+
+A native Bricks render (`render2-lean`, 12,585 records at 1024) took 586 s wall: 410 user, 163
+SYSTEM, 1.7 M page faults, 3.3 GB peak, one core. cProfile plus per-record timing
+(`~/Documents/cleanroom-substance-runs/profile_0928/prof_render.py`, `bricks.log`):
+
+    dirmotionblur    264 records   175 s   30%   17 taps, each a million-point bilinear gather
+    fxmaps           191           156 s   27%   3129 / 5596 / 8029 at ~10 s each
+    blend          5,604            68 s   12%
+    transformation 2,639            53 s    9%
+
+`ops._fast_sampler`'s closure was 232 s of self time -- 40% of the render -- and it is ~20
+separate million-element numpy passes of ~1 ms each: memory-bound, no single hot line. So the
+win is fewer calls, not a faster call.
+
+THE THREE CHANGES:
+
+  1. `sampler` tests `pos is grid` BEFORE its index arithmetic (it computed the floors, casts
+     and masks and then discarded them on the commonest call), and does the bilinear lerps in
+     place. This one IS bit-identical (random images, both dtypes, wrap, negative zeros).
+  2. `dirmotionblur` with a CONSTANT length and angle on an input at the render grid: each tap
+     is the whole image shifted by one sub-pixel offset -- `_shift_lerp`, three rolls and two
+     lerps in float32 -- instead of a gather. 10-12x per record. `_constant` accepts a
+     broadcast (N, 1) field whose rows agree, since `_scalar` broadcasts program values that
+     never read `$pos`.
+  3. `transformation` with an IDENTITY matrix on an input at the render grid is the same shift.
+     That is 92% of Bricks' transformations (842 no offset, 1,592 offset-only, mostly whole
+     pixels, which `_shift_lerp` returns as a bare roll). 12-50x per record.
+
+`filters.SHIFTED_TAPS` toggles 2 and 3 together for A/B.
+
+NOT BIT-IDENTICAL, AND BY HOW MUCH. Ash, 2026-09-28: speedups need not preserve bit-equality.
+Per tap against the sampler: max |d| <= 1.4e-5 on random images -- under one 16-bit step, and
+mostly the OLD path's error, since a float32 pixel centre at 1024 carries up to ~6e-5 px of
+rounding that the shift form does not have. Whole-pixel shifts are exact. Whole-pack A/B against
+a saved pre-change render (`ab_render.py`, `ab3_bricks.log`): 25 of 31 Bricks outputs differ,
+every one with mean |d| <= 2.3e-5; the worst, 003/ambientocclusion, has max 0.24 on 0.04% of
+pixels (437 of 1 M) -- sparse speckle at the joints, invisible side by side (`diff_r1708.png`):
+hard thresholds downstream (levels windows, `distance`'s `m > 0.5`) flipping pixels that sat
+within 1e-5 of the edge. Auras: 3 of 4 outputs, max 1.9e-6.
+
+RESULT: Bricks native 587 s -> 287 s (user 380 -> 220, sys 167 -> 65). The render2 ratchet
+passes unchanged -- 52 x 3, 0 constant yields, 21 quantities outside a bar as recorded -- in
+357 s where it took 700; `test_filters` 22 (non-ratchet), render2 suites 43, fast lane 19.
+
+WHAT IS LEFT: `fxmaps` is now the largest cost (~156 s, over half the new total) and has
+already had an equality-bound speed pass (`fx._coverage`, `BLEND_IN_PLACE`); its remaining
+cost is the Python loop drawing overlapping footprints, which wants a compiled rasteriser.
+numba 0.60 is installed and a fused bilinear kernel measured 3.7x on the general sampler, but
+no file in this repository imports it -- adding it is the owner's call.
