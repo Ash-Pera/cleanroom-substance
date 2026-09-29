@@ -1601,7 +1601,11 @@ the centre modulo the canvas, the only reading under which all of RoofTiles reco
 (`branchoffset` x = 0, 0.5, … 4.5) land. Skip a pattern whose size or centre is non-finite,
 whose size is `≤ 0`, `> 64` or `< 10⁻⁶` (the corpus has nothing between 1e-30 and 1e-06), or
 that is a marker (tag low byte `0x08`, `fx.markers = skip`). No `patternsize` ⇒ the whole
-canvas (`fx.sizeless = fill`; `skip`, `half`, `quarter` are arms). The value is
+canvas (`fx.sizeless = fill`; `skip`, `half`, `quarter` are arms). A cell that **states nothing to draw with** — pattern
+nibble 0 (and not a marker) with no `patternsize`, `opacity` or `imageindex` — is drawn like any
+sizeless pattern, at opacity 1 (`fx.bare = fill`); `skip`, an arm, draws nothing for it on both
+draw paths. Under `fill` every one of the 587 corpus FX-Maps holding such a cell renders as a
+constant (FORMAT-NOTES.md, "`fx.bare`"). The value is
 `clip(opacity, −1, 1) · gain · profile` (absent opacity ⇒ 1, `fx.negopacity = signed`), times
 the named input image sampled over the footprint when `imageindex` is present (absent on a
 record with exactly one image input, it names that input). Patterns combine by **`max`**, for
@@ -1671,7 +1675,7 @@ fault upstream of 10055", and "Quadrant subdivision lands in render2"):
   parent's region size; `fx.tree.order = rowmajor`: 0 top-left, 1 top-right, 2 bottom-left,
   3 bottom-right (`clockwise`, `colmajor` arms).
 - `patternsize` and `frameoffset` are in REGION units; a sizeless, non-marker cell fills its
-  region (`fx.tree.bare = fill`). A cell's programs run once PER REGION with a fresh `rand`
+  region (`fx.bare = fill`; see **Drawing** for a cell that states nothing to draw with). A cell's programs run once PER REGION with a fresh `rand`
   draw; `$number` stays the emission index.
 - **Open:** `branchoffset`'s unit (`fx.tree.branchoffset = canvas`; it offsets the cell's
   pattern and children, and Bricks 9804's author halves it by hand per level), the quadrant

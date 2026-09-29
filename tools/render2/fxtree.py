@@ -670,8 +670,19 @@ def _emit(rec, run, cells, order, roots, frame, numbers, cache):
         centre = np.stack([cxo, cyo], axis=1)
         marker = (cell.tag & 0xFF) == 0x08
         size = got.get("patternsize")
+        # `fx.bare = skip`: a cell with nothing to draw with places regions only (the flat
+        # draw's twin is in `fx.splat`).
+        bare = (
+            size is None
+            and got.get("opacity") is None
+            and got.get("imageindex") is None
+            and fx_patterntype(cell.tag) is None
+            and assume.assumed("fx.bare", "fill") == "skip"
+        )
+        if bare:
+            assume.note(rec.index)
         if size is None:
-            size_m = None if marker else np.repeat(s_m, 2, axis=1)
+            size_m = None if (marker or bare) else np.repeat(s_m, 2, axis=1)
         else:
             size_m = _broadcast(size, E, R).astype(np.float64)
             if size_m.shape[1] < 2:

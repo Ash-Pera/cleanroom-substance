@@ -581,6 +581,17 @@ QUESTIONS = {
     # UNITS (`fx._cell`'s test, on the tree path it declines). Bricks 3030: 841 integer
     # offsets that the canvas reading wraps onto one point of the torus. See `fxtree._emit`.
     "fx.tree.gridcell": ("canvas", "cell"),
+    # A BARE CELL -- pattern nibble 0, and no `patternsize`, `opacity` or `imageindex` field
+    # in its tag -- is drawn at its region (tree) or the canvas (flat, via `fx.sizeless`) at
+    # opacity 1 under `fill` (the reading as it was) and draws nothing under `skip`, on BOTH
+    # draw paths. FORMAT-NOTES.md records that Substance's `patterntype` 0 is a Quadrant that
+    # subdivides without drawing and that nibble 0 cannot tell it from 1 or 2; a cell stating
+    # nothing to draw with is the candidate. RoofTiles 1201/1208/1378/1385 are a flat 0.47 and
+    # 1213 a flat 1.0 under `fill` on the default draw as well as the tree: their `0x420018`
+    # cells paint the canvas and the `waves` below (opacity ~0.03) cannot show under `max`.
+    # Corpus: 590 FX-Maps in 45 files carry one (`fx_table`'s view). FORMAT-NOTES.md,
+    # "`fx.bare`".
+    "fx.bare": ("fill", "skip"),
     "fx.tree.branchoffset": ("canvas", "region"),
     "fx.tree.order": ("rowmajor", "clockwise", "colmajor"),
     # HOW A `set` UNDER A `select` BRANCH EXECUTES. `eager` is the transpiler as it stood:

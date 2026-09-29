@@ -947,6 +947,7 @@ def splat(rec, patterns, W, H, images=None, header=None):
     size_scale = cell if assume.assumed("fx.patternsize") == "cell" else None
     frame_scale = cell if assume.assumed("fx.frameoffset") == "cell" else None
     sizeless = assume.assumed("fx.sizeless", "fill")
+    bare_skip = assume.assumed("fx.bare", "fill") == "skip"
     skip_root = assume.assumed("fx.rootentry") == "skip"
     skip_markers = assume.assumed("fx.markers", "skip") == "skip"
     neg = assume.assumed("fx.negopacity", "signed")
@@ -999,6 +1000,11 @@ def splat(rec, patterns, W, H, images=None, header=None):
             if skip_root and b.size >= 2 and not np.any(np.abs(b[:2]) > 1e-6):
                 continue
             if sizeless == "skip":
+                continue
+            # `fx.bare = skip`: a sizeless, typeless cell that states no opacity and no
+            # image has nothing to draw with -- the flat twin of `fxtree._emit`'s test.
+            if bare_skip and p.get("opacity") is None and p.get("imageindex") is None:
+                assume.note(rec.index)
                 continue
             if sizeless in ("half", "quarter"):
                 p = dict(p)

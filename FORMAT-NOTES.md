@@ -64327,3 +64327,48 @@ The six Bricks records stashed (553, 2971 and the 003/005 height and roughness o
 of Sandy's outputs are BIT-IDENTICAL under both arms. What absorbed it: `fx.leafcount = header`
 (a leaf's baked count stands in when `numberadded` is 1) and `fx.chain = tree`, both added after
 the decision. `divisor` stays as the established reading; the arm could be retired.
+
+## `fx.bare`: the uncommitted `fx.tree.bare` investigated -- the fault is on the DEFAULT draw too, no scored output can arbitrate it, and structurally it is 587 of 587: every FX-Map holding such a cell is a dead constant under `fill`
+
+`fx.tree.bare` (above, 64032) sat uncommitted since 2026-09-25. What was open: whether the
+white-canvas fault is the tree walk's alone, whether anything scored moves, and whether `skip`
+is right. Logs and arrays in `~/Documents/cleanroom-substance-runs/bare_0928/`.
+
+THE FLAT DRAW HAS IT TOO. RoofTiles at native, default arms (`fx.subdivide = flat`): records
+1201, 1208, 1378, 1385 are an exact constant 0.47 (the header's `opacitymult`) and 1213 an exact
+1.0 -- identical to the `quadrant` stash that motivated the arm. On the flat draw the cell
+arrives as a sizeless, typeless pattern and `fx.sizeless = fill` makes it the whole canvas at
+opacity 1. So the arm is renamed `fx.bare` and covers BOTH paths with the same test (pattern
+nibble 0, not a marker, no `patternsize`, `opacity` or `imageindex`): `fxtree._emit` as before,
+and a twin branch in `fx.splat` beside `fx.sizeless`. Default `fill`.
+
+UNDER `skip` the records come alive -- quadrant: 1201 0.405 / sd 0.092, 1208 0.238 / 0.174, 1213
+0.592 / 0.244, streaked and fibrous textures (`waves_default_vs_skip.png`); flat: 0.038 / 0.013,
+the flat draw laying each ~0.03-opacity `waves` once at canvas size. No export pairs with these
+intermediates, so the SHAPE of what `skip` draws is not arbitrated here.
+
+NOTHING SCORED MOVES. RoofTiles' five outputs are identical at the default inputs (the waves
+feed the moss/paint branches, masked at Moss 0 / Paint_Age 0), `nativeguard` RoofTiles gives
+all 9 rows identical under `skip` (+0.558 / 0.792 / 0.037 both ways; the `old` set included),
+and the render2 ratchet passes under `skip` (`ratchet_skip.log`). The census says why: by
+`fx_table`, Auras, Bricks, Chesterfield and Sandy hold NO such cell; RoofTiles 8 records.
+
+THE STRUCTURAL CENSUS (`bare_structural.py`). Corpus-wide, 590 FX-Maps in 45 files hold such
+a cell (1,749 cells: `0x420018` 1,613, `0x20018` 136; `fx_table`'s view, which misses some
+nested cells). Each file rendered to its last such record at cap 256 under both readings, and
+each record classified constant (ptp < 1e-6) or structured:
+
+    fill -> skip        records
+    CONST -> struct       587
+    struct -> anything      0
+    not rendered            3    (upstream failures, not this arm)
+
+Under `fill`, every authored FX-Map that holds a cell stating nothing to draw with outputs a
+single value: the cell's full-strength square covers the canvas or region and, under `max`,
+every pattern drawn after it at a stated opacity < 1 disappears. An author does not build a
+1,024-pattern generator to output its own `opacitymult`. That is the same kind of structural
+argument that settled `fx.leafcount` and `fx.pointercell`. It argues for `skip` over `fill`; it
+does not show that what `skip` draws is the engine's picture.
+
+NOT PROMOTED in this commit: `fx.bare` is committed with default `fill`, both paths, and the
+ratchet, `test_fxtree`, render2 suites (44) and the fast lane (19) pass with it.
