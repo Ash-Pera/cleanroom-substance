@@ -1102,7 +1102,8 @@ def f_dirmotionblur(ctx, v):
     # a different fault in the same graph.
     length = np.clip(np.abs(intensity), 0.0, 256.0) / _reference_px(v)
     # `dirmotionblur.extent`: WHETHER THE INTENSITY IS THE BLUR'S TOTAL EXTENT OR ITS REACH
-    # EACH SIDE. `total` (as it was) spreads the 17 taps over [-length/2, +length/2];
+    # EACH SIDE. `total` spreads the 17 taps over [-length/2, +length/2] (`floor`, the
+    # default, is `total` with at least one tag texel);
     # `radius` over [-length, +length]. The export states which, and it states it on a
     # construct this filter can be tested on in isolation: Bricks 004 and 005 each end in
     # the SAME eight-direction stack (two chains of four at 1/16-turn steps, averaged 50/50,
@@ -1112,7 +1113,7 @@ def f_dirmotionblur(ctx, v):
     # 12 of 16 joints, 004 on 11 of 16, median x8.0 on both. x8 is x4 (reading the
     # intensity in the TAG's pixels, `warp.reference_px`) times x2 (this). Neither alone.
     # See FORMAT-NOTES.md, "the round-tile groove".
-    _ext = assume.assumed("dirmotionblur.extent", "total")
+    _ext = assume.assumed("dirmotionblur.extent", "floor")
     if _ext == "radius":
         length = length * 2.0
     elif _ext == "x8render":
@@ -1123,6 +1124,11 @@ def f_dirmotionblur(ctx, v):
         # tag x radius gives x8 on Bricks only because its rendered/tag ratio is 4 and x4 on
         # Auras. See FORMAT-NOTES.md, "The large-blur fit".
         length = np.clip(np.abs(intensity), 0.0, 256.0) * 8.0 / float(W)
+    elif _ext == "floor":
+        # AT LEAST ONE TAG TEXEL for a positive intensity; 0 stays a pass-through. FORMAT-NOTES.md,
+        # "the round-tile joint, re-measured".
+        a = np.clip(np.abs(intensity), 0.0, 256.0)
+        length = np.where(a > 0.0, np.maximum(a, np.float32(1.0)), a) / _reference_px(v)
     turn = 2.0 * np.pi * angle
     TAPS = 17
     src = np.asarray(ctx.src(v, 0))

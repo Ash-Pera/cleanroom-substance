@@ -93,7 +93,11 @@ QUESTIONS = {
     # eight-direction stack over a hard slot, and each graph's own export wants 8x today's
     # length joint by joint (x8 on 12 of 16 and 11 of 16 joints) -- x4 of which is reading
     # the intensity in the tag's pixels (`warp.reference_px`), x2 this.
-    "dirmotionblur.extent": ("total", "radius", "x8render"),
+    # `floor` IS THE DEFAULT (2026-10-10): `total`, but a positive intensity reaches at least
+    # ONE TAG TEXEL -- 0.5016 doubles, every stack at 1.947 and above is untouched, and Bricks'
+    # round joints land on the export. FORMAT-NOTES.md, "the round-tile joint, re-measured"
+    # and "`floor` promoted".
+    "dirmotionblur.extent": ("floor", "total", "radius", "x8render"),
     "normal.default_intensity": (1.0, "refuse", 0.5, 2.0, 4.0, 8.0, 16.0),
     "blur.kernel": ("box", "gaussian"),
     "emboss.probe": ("passthrough",),

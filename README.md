@@ -178,14 +178,14 @@ pixel correlation; then the per-row ratchet (`test_render2_reference_agreement_d
 52 entries × 3 grids, a frozen health census). Readings the file does not settle are
 `assume.QUESTIONS` arms; their defaults, and why, are `SPEC.md` §13.9.
 
-Current scores, every pack at its export size (`nativeguard.py`, mean over rows):
+Current scores, every pack at its export size (`nativeguard.py`, mean over rows; 2026-10-10):
 
     pack             size   rows    corr     band    |dc|
     Chesterfield     2048    10    +0.950    0.952   0.025
     Auras             512     3    +0.873    7.131   0.139
-    Bricks           1024    48    +0.636    1.146   0.034
-    RoofTiles        2048     9    +0.558    0.792   0.037
-    SandyStonePath   2048    20    +0.176    1.800   0.039
+    Bricks           1024    48    +0.638    1.054   0.033
+    RoofTiles        2048     9    +0.563    0.727   0.038
+    SandyStonePath   2048    20    +0.176    1.744   0.039
 
 What lands: every pack's tile layout, mortar geometry, heights and normals sit on the export;
 Chesterfield is above +0.85 on every row and +0.91 or better on all but one (its `metallic`
@@ -198,11 +198,11 @@ What is visibly wrong, each with its section in `FORMAT-NOTES.md`:
   - **Bricks roughness on 002 / 004 / 005 is far too dark** (dc −0.31 to −0.40). The tree
     walk (`fx.subdivide = quadrant`) fixes the level and removes a faint canvas-sized ring from
     graphs 003–005, but costs colour elsewhere (Chesterfield's blue), so it is not the default.
-  - **Bricks' round-tile mortar joints are 0.75 of the export's width and half its depth.**
-    Doubling the `dirmotionblur` length (`x8render` or `radius`) widens them to the export
-    but over-blurs graph 003 by the same amount, because the same blur stacks at the same
-    intensities feed both; the ratchet refuses it on 18 rows. The fault is upstream of the
-    blur, in the joint construct, and is not yet found.
+  - **Bricks' round-tile mortar joints** were 0.75 of the export's width and half its depth;
+    under `dirmotionblur.extent = floor` (a blur reaches at least one tag texel, default since
+    2026-10-10) they sit on it, f/f 0.299 / 0.296 against 0.278 / 0.293, width 8 / 8. The
+    reading is a candidate mechanism, not one read from a source, and it costs 003's normal z
+    and RoofTiles' normal some top octaves.
   - **Tile faces carry round pits where the export has an irregular mottle**: which FX entries
     sum rather than take the max is not decided by any field read so far.
   - **SandyStonePath draws cog-shaped rosettes on every tile**: an edge detector amplifying

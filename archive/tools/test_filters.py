@@ -1930,11 +1930,15 @@ GUARD_TABLE = {
         was=(0.86, 256),
         companion=('bricks_tile_octaves', 0.86),
     ),
+    # RE-TAKEN when `dirmotionblur.extent = floor` became the default (2026-10-10): the 0.5346 / 0.495 stacks reach a
+    # texel and 003's normal z loses top octaves (band adverse at every grid).
+    # Was: 128 (+0.7643, 0.9781, -0.0028), 256 (+0.7652, 0.7300, -0.0028), 512 (+0.7653,
+    # 0.6633, -0.0028). FORMAT-NOTES.md, "`floor` promoted".
     ('Kutejnikov__Bricks_and_tiles', '003/normal', 2): Entry(
         at={
-            128: (+0.7643, 0.9781, -0.0028),
-            256: (+0.7652, 0.7300, -0.0028),
-            512: (+0.7653, 0.6633, -0.0028),
+            128: (+0.7547, 0.7808, -0.0017),
+            256: (+0.7549, 0.5727, -0.0017),
+            512: (+0.7549, 0.4571, -0.0017),
         },
         was=(0.78, 256),
         companion=('bricks_tile_octaves', 0.78),
@@ -2050,11 +2054,15 @@ GUARD_TABLE = {
         was=(0.55, 256),
         companion=('bricks_tile_octaves', 0.55),
     ),
+    # RE-TAKEN when `dirmotionblur.extent = floor` became the default (2026-10-10): the terminal 0.5016 stack doubles;
+    # band 1.46 -> 0.99 at 256, corr -0.025 (adverse at every grid).
+    # Was: 128 (+0.8227, 1.2160, -0.0019), 256 (+0.8197, 1.4607, -0.0019), 512 (+0.8188,
+    # 1.5876, -0.0019). FORMAT-NOTES.md, "`floor` promoted".
     ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): Entry(
         at={
-            128: (+0.8227, 1.2160, -0.0019),
-            256: (+0.8197, 1.4607, -0.0019),
-            512: (+0.8188, 1.5876, -0.0019),
+            128: (+0.7979, 0.9835, -0.0011),
+            256: (+0.7950, 0.9856, -0.0011),
+            512: (+0.7939, 0.9839, -0.0011),
         },
         was=(0.76, 256),
         companion=('bricks_tile_octaves', 0.76),
@@ -2098,11 +2106,15 @@ GUARD_TABLE = {
         },
         was=(0.2, 256),
     ),
+    # RE-TAKEN when `dirmotionblur.extent = floor` became the default (2026-10-10): corr +0.040 at every grid, dc
+    # -0.0040 -> -0.0091 (adverse at every grid).
+    # Was: 128 (+0.6503, 0.3081, -0.0040), 256 (+0.6528, 0.3040, -0.0040), 512 (+0.6531,
+    # 0.3049, -0.0040). FORMAT-NOTES.md, "`floor` promoted".
     ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 2): Entry(
         at={
-            128: (+0.6503, 0.3081, -0.0040),
-            256: (+0.6528, 0.3040, -0.0040),
-            512: (+0.6531, 0.3049, -0.0040),
+            128: (+0.6884, 0.3634, -0.0091),
+            256: (+0.6928, 0.3210, -0.0091),
+            512: (+0.6937, 0.3080, -0.0091),
         },
         was=(0.2, 256),
     ),
@@ -2264,6 +2276,8 @@ HEALTH_CENSUS = {
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'band'),
+    # Enters with `dirmotionblur.extent = floor` (2026-10-10); FORMAT-NOTES.md, "`floor` promoted".
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),

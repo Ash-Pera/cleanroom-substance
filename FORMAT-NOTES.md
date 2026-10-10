@@ -64549,3 +64549,60 @@ and ~1x at 3-7. A mapping from intensity to reach that does both, read from a pe
 source rather than fitted, is the open question; a 17-tap box with a different kernel shape
 (`stackemu.py`: triangle or Gaussian at ~3x match the core as well as a box at 2x) is the
 other half of it.
+
+## `dirmotionblur.extent = floor` (new arm, NOT promoted): a positive intensity reaches at least one tag texel -- Bricks' round joints land, 001 / 003 untouched, and the ratchet refuses 3 small rows
+
+The one reading the previous section's data suggests that is not chosen record by record:
+`total`, except that a positive intensity reaches at least ONE TEXEL OF THE RECORD'S TAG
+(`max(I, 1) / _reference_px`; 0 stays a pass-through). On Bricks it doubles the 0.5016 stack,
+lifts 0.5346 / 0.495 by ~2x and the 0.1056 colour blurs by ~9.5x, and leaves every stack at
+1.947 and above alone -- the set 001 / 003 need left alone. The constant is the texel, not a
+fit; the MECHANISM is not read from any source, so this is a candidate and nothing more.
+
+    Bricks (ablate.py floor=1.0)   mean dcorr +0.0019; 001 -0.0004, 002 +0.0089, 003 -0.0000,
+                                   004 +0.0007, 005 +0.0007; joints f/f 004 0.299 / 005 0.296
+                                   (export 0.278 / 0.293), width 8 / 8; 004 / 005 normal ch2
+                                   band 1.35 / 1.39 -> ~0.97; 002 normal ch2 band 1.56 -> 0.78
+    THE RATCHET (ASSUME=dirmotionblur.extent=floor, ratchet_floor.log) REFUSES 3 rows:
+        003/normal ch2   band adverse at every grid   0.78 / 0.57 / 0.46
+        004/normal ch2   corr adverse at every grid   0.798 / 0.795 / 0.794
+        005/basecolor ch2  dc adverse at every grid   -0.0091
+      (`x8render` was refused on 18.)
+    nativeguard, the other packs (ng_floor_*.log, against bare_0928/ng_all_0928.log):
+        Auras, Chesterfield   identical
+        SandyStonePath        corr +0.176 unchanged; band 1.800 -> 1.744 (02 basecolor band
+                              0.53 -> 0.49, 01 normal / AO bands a few % toward 1)
+        RoofTiles             corr +0.558 -> +0.563 (normal ch1 +0.018, ch2 +0.030), band
+                              0.792 -> 0.727 (normal ch0 0.66 -> 0.52, ch2 0.85 -> 0.54)
+
+So it is the joint fix without `x8render`'s cost on 001 / 003, but not free: three Bricks
+rows past their bars and RoofTiles' normal losing high octaves it already lacked. Promotion
+would re-take the three named entries and is the owner's. Suites with the candidate
+registered: render2 44, fast lane 18 of 19 (the pre-existing corpus-count failure).
+
+## `floor` promoted: `dirmotionblur.extent = floor` is the default, three Bricks entries re-taken and one census entry added
+
+Owner's standing instruction, 2026-10-10 ("you don't need to ask for every commit and
+promotion"), on the evidence of the two sections above. `floor` is the call-site default in
+`f_dirmotionblur` and first in `assume.QUESTIONS`; `total` is the arm. SPEC.md §13 dirmotionblur
+row and the §13.9 defaults table updated.
+
+RE-TAKEN, old values kept in comments at each entry (`readings_floor.pkl`, `readings.py`):
+
+    003/normal ch2       corr 0.765 -> 0.755, band at 256 0.730 -> 0.573   (band adverse)
+    004/normal ch2       corr 0.820 -> 0.795, band at 256 1.461 -> 0.986   (corr adverse)
+    005/basecolor ch2    corr 0.653 -> 0.693, dc -0.0040 -> -0.0091         (dc adverse)
+    census + 002/basecolor ch1 dc                                             (21 -> 22)
+
+The ratchet passes under the new default, 52 x 3, census 22 (`ratchet` run 2026-10-10). Native
+means (`ng_bricks_floor_default.log`; the other packs from `ng_floor_*.log`, the same reading):
+
+    pack           before (0928)                after
+    Bricks         +0.636 / 1.146 / 0.034       +0.638 / 1.054 / 0.033
+    RoofTiles      +0.558 / 0.792 / 0.037       +0.563 / 0.727 / 0.038
+    Sandy          +0.176 / 1.800 / 0.039       +0.176 / 1.744 / 0.039
+    Auras, Chesterfield                          identical
+
+What it fixes is the fault found by looking: the round joints. What it costs is top octaves on
+003's normal z and RoofTiles' normal, both already short of them -- which is the direction to
+watch if a later reading of the blur's kernel replaces the floor.
