@@ -64672,3 +64672,26 @@ ADDENDUM, same day -- what the 002 value field is NOT, so the next pass starts h
 Still open: where the export's ~8x wider value range and its faces near t = 0.62 come from.
 Candidates not yet measured: `hsl` 9291's three programs (hue / saturation / luminosity), and
 whether the engine's `addsub` clamps per step (ours clamps once per blend, as every mode does).
+
+ADDENDUM 2: `hsl` 9291 evaluates to the identity (hue / saturation / luminosity 0.5 / 0.5 / 0.5;
+9296 saturation 0.49), and `addsub` already clamps once per blend -- both candidates out.
+
+## `fx.subdivide = quadrant` + `twoway` re-measured on today's defaults: 14 ratchet rows, and Chesterfield's whole basecolor loss is ONE FX-Map, record 333, drawing a near-black noise where the flat walk draws one near-white pattern
+
+Re-run 2026-10-10 at `e8af5e3` (`~/Documents/cleanroom-substance-runs/quadrant_1010/`). Native
+Bricks under the arm: +0.637 / band 0.877 / |dc| 0.011 against today's +0.638 / 1.054 / 0.033 --
+the roughness levels and the giant ring fixed as recorded before, the band now overshooting
+below 1. The ratchet refuses on 14 rows: 002 / 004 / 005 height dc (+0.041 / +0.043 / +0.053),
+003 basecolor corr x3 (ch0 0.42 -> 0.33), 003 AO and height band, 003 height dc, 004 normal ch2
+band, and Chesterfield basecolor ch0 band, ch1 dc, ch2 corr (0.92 -> 0.58) and dc.
+
+CHESTERFIELD, ATTRIBUTED (`conestash.py` both readings, `roots.py`): of 868 records in the
+basecolor cone, 40 differ and exactly ONE is a root that is not a sub-0.002 `dyngradient`
+wobble -- FX-Map 333 (hurst 0.75, opacity 1.5): flat walk mean 0.959 / sd 0.059 (one canvas-size
+diagonal pattern), `quadrant` mean 0.040 / sd 0.013 / max 0.064 (a fine noise at almost no
+amplitude). Its partner 331 (background 1.0, hurst 0.75) is a flat 1.0 under both, so 334 =
+332 - 333 is ~0 under the default (the dead lane recorded at `fx.sizeless`) and ~0.96 nearly flat
+under `quadrant`; the lane then reaches the basecolor through four `directionalwarp`s and 340.
+NEITHER READING DRAWS A PLAUSIBLE NOISE HERE: a hurst-0.75 multi-level noise at opacity 1.5
+should not top out at 0.064. 333's tree is a looping program over slot state with `0x89` gates
+(`fxdisasm.py ... 333`), not a plain octave stack -- which is where the next look goes.
