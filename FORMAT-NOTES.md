@@ -64478,3 +64478,74 @@ Suites with the change: render2 44, `test_filters` 23 outside the ratchet (the l
 still matches the whole-file render), fast lane 18 of 19. The one fast-lane failure,
 `test_corpus_paths_are_cwd_independent` (434 corpus files found, 437 expected), fails the same
 way on the HEAD export; it is the corpus, not this.
+
+## The round-tile joint, re-measured: the terminal 0.5016 stack IS the joint and is NOT shared with 001/003 -- the `x8render` losses come from the 7.4316 and 2.85-class blurs -- and no one unit, linear or additive, satisfies every graph
+
+Measured 2026-10-09 at `097be0c`, native 1024, all under today's defaults. Scripts and logs in
+`~/Documents/cleanroom-substance-runs/joints_1009/` (`stage.py`, `profiles.py`, `stackemu.py`,
+`ablate.py`, `cmpabl.py`; `abl_*.json` hold every row of every arm).
+
+WHERE 005's GROOVE IS MADE. Mean profile over the export's 16 joints at each stage, widths at
+25 / 50 / 90 % of face-to-floor (`profiles.py`):
+
+    export        f/f 0.289   5  7 22
+    3125          f/f 0.010   3  5 10     end of the 3063-3125 noise slope blur (32 warps
+    3144 / 3147   f/f 0.010   3  5 10       along 3062, running mean) of 3045's tile edge
+    3167          f/f 0.010   3  5 10     3147 through two blends, unchanged at the joint
+    3176 = height f/f 0.172   3  5 12     the terminal eight-stack, intensity 0.5016
+
+So the groove entering the stack is 3125's and passes 3144 -> 3167 untouched. THE SHAPE SAYS
+BLUR, NOT A WIDER SLOT: the export is +2 px wider than ours at 25 % and +10 px at 90 %, and
+shallower -- a wider slot adds width evenly and keeps the floor at 0; more blur widens the
+skirts and lifts the floor, which is what the export has. Emulating 3168-3176 on the saved
+3167 with `filters._dirmotion_shifted` reproduces 3176 to max |d| 1.2e-7, and at 2x the
+length the mean core reads 0.76 0.50 0.33 0.46 0.72 (offsets -4..+4) against the export's
+0.70 0.44 0.29 0.44 0.73; f/f 0.297, width 8.0 against 0.293 / 8.0 (`stackemu.py`). The
+residual shape error (0.170, from 0.176) is an asymmetric skirt in the export, 0.95 on one
+side and 1.07 on the other: a per-tile tilt, i.e. the seed, not the joint.
+
+THE REFUSAL'S PREMISE HOLDS FOR SOME STACKS AND NOT THIS ONE. Census of all 264 Bricks
+`dirmotionblur` (`dmb_census.py`): every graph owns its own copies, and 0.5016 occurs ONLY in
+002 / 004 / 005 (8 records each). Doubling length on a subset (`ablate.py`, `_reference_px`
+halved for the chosen records), mean corr change per graph against today's default:
+
+    doubled               001      002      003      004      005    joints f/f 004 / 005 / 003
+    all (= x8render)    -0.021   +0.008   -0.040   +0.006   +0.005   0.300 / 0.297 / 0.502
+    0.5016 only          0        +0.011   0        +0.001   +0.001   0.299 / 0.297 / 0.406
+    all but 0.5016      -0.021   -0.004   -0.040   +0.005   +0.004   0.148 / 0.148 / 0.502
+    7.4316 only         -0.023    0       -0.014    0        0
+    2.85 class *        +0.002   -0.002   -0.025   +0.006   +0.005   0.148 / 0.148 / 0.515
+    1.947 / 0.5346 / colour 0.495+0.1056 only: all within 0.0014
+    (export f/f: 004 0.278, 005 0.293, 003 0.462, 002 0.448)
+
+    * 2.8512 (001/003, 4-record chains), 2.211 (002/004/005), 2.112 and 2.6466 (004/005)
+
+The 0.5016-only arm lands both round graphs' joints, takes their normal ch2 band 1.35 / 1.39
+-> 0.97 / 0.98, raises 002 basecolor +0.026..+0.034, and leaves 001 and 003 bit-for-bit
+alone; its one loss is 002 normal ch2 -0.012 (band 1.56 -> 0.78, overshooting). Every
+`x8render` loss on 001 / 003 is the 7.4316 and 2.85-class stacks, whose spectra say they
+are right at 1x there (003 height band 1.03 -> 0.80, normal 0.98 -> 0.68 under `all`).
+
+BUT THEY ARE ONE CONSTRUCT. The 0.5016, 0.5346, 1.947 and 7.4316 stacks are the same
+eight-record pattern (two chains of four at 0, 1/8, 1/4, -1/8 and 1/16, 7/16, 3/16, 5/16 of a
+turn, averaged 50/50) with the same word0, the same named parameters and the same unread
+class-bit-27 slot; only the baked intensity differs. So the unit must be one function of the
+intensity, and a LINEAR one is refuted: 0.5016 wants 2x, 7.4316 and 2.8512 want 1x. Tried
+because it would explain that shape, length = (I + c) tag px, c applied to every baked blur:
+
+    c        mean dcorr   001      002      003      joints f/f 002 / 003 / 004 / 005
+    0.25     -0.0006    -0.003   +0.005   -0.009   0.460 / 0.424 / 0.220 / 0.220
+    0.5      -0.0011    -0.005   +0.009   -0.016   0.508 / 0.437 / 0.299 / 0.297
+    1.0      -0.0011    +0.001   +0.009   -0.017   0.588 / 0.452 / 0.431 / 0.431
+
+c = 0.5 lands 004 / 005 and moves 003's joints the right way (0.406 -> 0.437 of 0.462), but
+003 still loses corr, concentrated in basecolor ch0 (-0.045 at c = 0.25, where the 7.4316
+stack moves only 3 %): the additive term inflates the tiny COLOUR blurs (0.1056 becomes 3.4x)
+and 003's basecolor follows them. Each refinement from here would be chosen to fit. NOT AN
+ARM, NOTHING PROMOTED. What this settles: the joint fault is the terminal stack's length (or
+a kernel that reaches further than a 17-tap box at the same intensity), not the slot, and the
+reason no reading has been promotable is that the same construct must be ~2x at intensity 0.5
+and ~1x at 3-7. A mapping from intensity to reach that does both, read from a permitted
+source rather than fitted, is the open question; a 17-tap box with a different kernel shape
+(`stackemu.py`: triangle or Gaussian at ~3x match the core as well as a box at 2x) is the
+other half of it.
