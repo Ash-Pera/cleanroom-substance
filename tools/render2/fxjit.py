@@ -1,4 +1,4 @@
-"""Compiled kernels for the two hottest loops in render2, OPTIONAL: numba if importable.
+"""Compiled kernels for render2's hottest loops, OPTIONAL: numba if importable.
 
 WHY THIS EXISTS. A native Bricks render (12,585 records at 1024) spent half its time in
 `fx.splat`'s per-pattern loop -- 39,662 patterns drawn as 62,055 footprint tiles, each ~15
@@ -14,7 +14,9 @@ kernels off in-process for an A/B against the numpy paths.
 NOT BIT-IDENTICAL to the numpy paths (owner's rule, 2026-09-28: speed does not need
 bit-equality). The raster computes a footprint's local coordinates in float64 where numpy
 stayed in float32; the sampler is the numpy arithmetic in the same dtypes and matched it
-bit for bit on every case tested, but nothing here promises that.
+bit for bit on every case tested, but nothing here promises that. The nearest-texel gather
+(the pixel processor's sampler, 2026-10-09) does numpy's steps in numpy's dtypes, with the
+integers numpy gives a NaN / out-of-range cast probed from numpy at import.
 """
 import math
 
@@ -201,6 +203,46 @@ if AVAILABLE:
                 bot = np.float64(b1 - a1) * fu + np.float64(a1)
                 out[i, c] = (bot - top) * fv + top
         return out
+
+    @njit(cache=True)
+    def _as_int64(f, inv_nan, inv_hi, inv_lo):
+        # numpy's `astype(np.int64)` where the float has no int64: probed, not assumed.
+        if f != f:
+            return inv_nan
+        if f >= 9.223372036854775807e18:
+            return inv_hi
+        if f < -9.223372036854775808e18:
+            return inv_lo
+        return np.int64(f)
+
+    @njit(parallel=True, cache=True)
+    def _nearest_kernel(base, pos, W, H, Wf, Hf, inv, out):
+        pow2 = (W & (W - 1)) == 0 and (H & (H - 1)) == 0
+        for i in prange(pos.shape[0]):
+            u = _as_int64(np.floor(pos[i, 0] * Wf), inv[0], inv[1], inv[2])
+            v = _as_int64(np.floor(pos[i, 1] * Hf), inv[0], inv[1], inv[2])
+            if pow2:
+                u &= W - 1
+                v &= H - 1
+            else:
+                u %= W
+                v %= H
+            r = v * W + u
+            for c in range(base.shape[1]):
+                out[i, c] = base[r, c]
+
+
+with np.errstate(invalid="ignore"):
+    _INVALID_INT64 = np.array([np.nan, np.inf, -np.inf]).astype(np.int64)
+
+
+def _nearest(base, pos, W, H, out_dtype):
+    """`ops.nearest_sampler`'s texel gather in one pass: `floor(pos * W)` in pos's dtype,
+    wrapped, gathered, written in `out_dtype`."""
+    out = np.empty((pos.shape[0], base.shape[1]), out_dtype)
+    t = pos.dtype.type
+    _nearest_kernel(base, pos, W, H, t(W), t(H), _INVALID_INT64, out)
+    return out
 
 
 class TileQueue:

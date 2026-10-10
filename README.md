@@ -211,8 +211,9 @@ What is visibly wrong, each with its section in `FORMAT-NOTES.md`:
   - **RoofTiles lacks its fine wood grain**, which the export's height carries at small
     amplitude; its source in our graph is not yet found.
 
-Speed: a native Bricks render is 161 s and the ratchet 4–6 minutes with numba; without it the
-numpy paths are about 1.8× slower (287 s).
+Speed (2026-10-09, numba): a native Bricks render is 145 s and the ratchet 156 s, its packs
+rendered in parallel (`RATCHET_WORKERS=1` for serial). The numpy paths without numba were
+about 1.8× slower when last measured (Bricks 287 s, 2026-09-28).
 
 ## On the notebook style
 

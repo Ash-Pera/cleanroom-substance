@@ -542,6 +542,7 @@ def _lean_renderer(extra_keep=()):
             outputsize=_os,
             inputs=inputs,
             drop_after=drop,
+            sizes=_sizes,
         )
         return outs
 

@@ -155,8 +155,17 @@ def vec(*parts, ncomp=None):
     for p in parts:
         cols.append(_col(p))
     n = max(c.shape[0] for c in cols)
-    cols = [np.repeat(c, n, axis=0) if c.shape[0] == 1 and n > 1 else c for c in cols]
-    out = np.concatenate(cols, axis=-1)
+    if all(c.shape[0] in (1, n) for c in cols):
+        # Each column written once, a 1-row one broadcast: `np.repeat` + `concatenate`
+        # in one pass, same dtype and values.
+        out = np.empty((n, sum(c.shape[1] for c in cols)), np.result_type(*cols))
+        j = 0
+        for c in cols:
+            out[:, j : j + c.shape[1]] = c
+            j += c.shape[1]
+    else:
+        cols = [np.repeat(c, n, axis=0) if c.shape[0] == 1 and n > 1 else c for c in cols]
+        out = np.concatenate(cols, axis=-1)
     if ncomp is not None and out.shape[1] != ncomp:
         if out.shape[1] < ncomp:
             raise ValueError(
@@ -214,12 +223,13 @@ def select(cond, a, b):
     """
     a, b, c = _col(a), _col(b), _col(cond)
     w = max(a.shape[1], b.shape[1])
+    # A narrow operand's first column, BROADCAST by `where` rather than repeated to `w`.
     if a.shape[1] < w:
-        a = np.repeat(a[:, :1], w, axis=1)
+        a = a[:, :1]
     if b.shape[1] < w:
-        b = np.repeat(b[:, :1], w, axis=1)
+        b = b[:, :1]
     if c.shape[1] != w:
-        c = np.repeat(c[:, :1], w, axis=1)
+        c = c[:, :1]
     return np.where(c, a, b)
 
 

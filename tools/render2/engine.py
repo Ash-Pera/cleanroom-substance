@@ -503,6 +503,7 @@ def render(
     outputsize=None,
     inputs=None,
     drop_after=None,
+    sizes=None,
 ):
     """Evaluate every record. Returns (outputs, failures, info).
 
@@ -537,11 +538,14 @@ def render(
     is the caller that supplies one, because a 1024-px render of a 12,585-record package
     does not fit in memory whole and a per-output cone with its dead intermediates freed
     does.
+
+    `sizes` is `record_sizes(asm, outputsize)` for a caller that already has it.
     """
     ctx = Context(asm, cap=max_dim, outputsize=outputsize, inputs=inputs)
     ctx.outputs.update(precomputed or {})
     failures, cascaded, ignored = {}, set(), {}
-    sizes = record_sizes(asm, outputsize) or {}
+    if sizes is None:
+        sizes = record_sizes(asm, outputsize) or {}
 
     # THE VALUE CACHE IS `ctx.cache` AND NOTHING IS INSTALLED ANYWHERE. Record order is
     # what makes a `cache_read` answerable -- writers precede readers, over 7,074 matched

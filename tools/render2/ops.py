@@ -224,11 +224,16 @@ def nearest_sampler(image):
     H, W = im.shape[:2]
     base = im.reshape(-1, im.shape[2]) if im.ndim == 3 else im.reshape(-1, 1)
     grid = _GRIDS.get((W, H))
+    jit = fxjit.active() and base.dtype in (np.float32, np.float64)
 
     def sample(pos):
         pos = np.asarray(pos)
         if pos is grid:
             return base.astype(_grid_result_type(base.dtype), copy=True)
+        if jit and pos.dtype in (np.float32, np.float64) and pos.ndim == 2 \
+                and pos.shape[1] >= 2:
+            # ONE COMPILED PASS (`fxjit._nearest`), the same arithmetic in the same dtypes.
+            return fxjit._nearest(base, pos, W, H, _grid_result_type(base.dtype))
         u = np.floor(pos[:, 0] * W).astype(np.int64) % W
         v = np.floor(pos[:, 1] * H).astype(np.int64) % H
         return base[v * W + u].astype(_grid_result_type(base.dtype), copy=False)

@@ -2419,6 +2419,93 @@ def test_reference_agreement_does_not_regress():
     return
 
 
+#: render2's module-level speed toggles, which a spawned worker would reset to their defaults.
+RENDER2_TOGGLES = (
+    ("filters", "SHIFTED_TAPS"),
+    ("fxjit", "ENABLED"),
+    ("fx", "BLEND_IN_PLACE"),
+    ("fx", "FAST_RASTER"),
+    ("ops", "FAST_SAMPLER"),
+    ("ops", "IDENTITY_GRID"),
+)
+
+
+def _render2_worker_state():
+    """What a spawned worker cannot inherit: an in-process `assume` scope and
+    `RENDER2_TOGGLES`. `ASSUME` in the environment it does inherit."""
+    import importlib
+    import assume
+    import render2  # noqa: F401
+
+    return {
+        "assume": assume.active(),
+        "toggles": {
+            (m, a): getattr(importlib.import_module(m), a) for m, a in RENDER2_TOGGLES
+        },
+    }
+
+
+def _render2_pack_readings(pack, refs, state=None):
+    """One pack of the render2 ratchet: `(flat yields at RENDER2_FLOOR_DIM, {key: {grid:
+    Reading}})`. Module-level so `test_render2_reference_agreement_does_not_regress` can
+    run it in a worker process."""
+    import refcompare
+
+    if state is not None:
+        import importlib
+        import assume
+        import render2  # noqa: F401
+
+        assume._ACTIVE.clear()
+        assume._ACTIVE.update(state["assume"])
+        for (m, a), val in state["toggles"].items():
+            setattr(importlib.import_module(m), a, val)
+    n_flat, readings = 0, {}
+    _want = refcompare.implied_outputsize(refs)
+    _cap = (1 << _want[0]) if _want else max(GUARD_GRIDS)
+    # `grid=None` yields NATIVE arrays. `refguard.measure` owns both grids -- the
+    # 64-px score grid for corr/dc and the pair's own for the band ratio -- and a
+    # caller that pre-resampled to 64 would have thrown away every octave above 32
+    # cycles, which is the half of the instrument that sees an amplitude collapse.
+    # `render2-lean` is `render2` with dead intermediates freed, which is what makes a
+    # native-size render fit at all; `test_render2_lean_renderer_matches_the_whole_file_render`
+    # holds it to being a memory policy and nothing else.
+    for name, chan, ours, ref in refcompare.compare_pack(
+        pack,
+        refs,
+        max_dim=_cap,
+        outputsize="implied",
+        renderer="render2-lean",
+        grid=None,
+        qualify_graph=True,
+    ):
+        if chan is None:
+            continue
+        ours = np.asarray(ours, dtype=np.float64)
+        for grid in GUARD_GRIDS:
+            og = (
+                ours
+                if ours.shape[0] == grid
+                else refguard.resample(ours[:, :, None], grid)[:, :, 0]
+            )
+            r = refguard.measure(og, ref)
+            if r.flat:
+                # COUNTED OVER EVERY YIELD, not only the floored ones, so a channel that
+                # has no entry cannot go flat unnoticed. That is the wider half of the
+                # b2f1d97 exposure: the entry that regression took away was not in any
+                # table at the time.
+                if grid == RENDER2_FLOOR_DIM:
+                    n_flat += 1
+                continue
+            key = (pack, name, chan)
+            if key not in GUARD_TABLE:
+                continue
+            # LAST ROW WINS, like the numbers in the table: a multi-graph pack yields one
+            # key several times and only the last is what was measured.
+            readings.setdefault(key, {})[grid] = r
+    return n_flat, readings
+
+
 def test_render2_reference_agreement_does_not_regress():
     """The same ratchet on the RENDERER OF RECORD, at the size the maps were exported at.
 
@@ -2469,53 +2556,28 @@ def test_render2_reference_agreement_does_not_regress():
     # Chesterfield and 170 in Bricks -- is a stated limit: clamping those loses
     # supersampling rather than smearing. FORMAT-NOTES.md, "the `pergraph` blocker was an
     # artefact of `max_dim`" and "The clamp census".
+    # ONE PROCESS PER PACK: the packs share nothing, and Bricks alone is ~3/4 of the
+    # serial wall. `RATCHET_WORKERS=1` runs them in this process, in order.
+    todo = sorted(p for p in packs if any(k[0] == p for k in GUARD_TABLE))
+    workers = min(len(todo), int(os.environ.get("RATCHET_WORKERS", len(todo)) or 1))
+    state = _render2_worker_state()
+    if workers <= 1:
+        results = [_render2_pack_readings(p, packs[p], state) for p in todo]
+    else:
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(
+            workers, mp_context=multiprocessing.get_context("spawn")
+        ) as ex:
+            results = list(
+                ex.map(_render2_pack_readings, todo, [packs[p] for p in todo],
+                       [state] * len(todo))
+            )
     counted = {}
-    for pack, refs in sorted(packs.items()):
-        if not any(k[0] == pack for k in GUARD_TABLE):
-            continue
-        counted[pack] = 0
-        _want = refcompare.implied_outputsize(refs)
-        _cap = (1 << _want[0]) if _want else max(GUARD_GRIDS)
-        # `grid=None` yields NATIVE arrays. `refguard.measure` owns both grids -- the
-        # 64-px score grid for corr/dc and the pair's own for the band ratio -- and a
-        # caller that pre-resampled to 64 would have thrown away every octave above 32
-        # cycles, which is the half of the instrument that sees an amplitude collapse.
-        # `render2-lean` is `render2` with dead intermediates freed, which is what makes a
-        # native-size render fit at all; `test_render2_lean_renderer_matches_the_whole_file_render`
-        # holds it to being a memory policy and nothing else.
-        for name, chan, ours, ref in refcompare.compare_pack(
-            pack,
-            refs,
-            max_dim=_cap,
-            outputsize="implied",
-            renderer="render2-lean",
-            grid=None,
-            qualify_graph=True,
-        ):
-            if chan is None:
-                continue
-            ours = np.asarray(ours, dtype=np.float64)
-            for grid in GUARD_GRIDS:
-                og = (
-                    ours
-                    if ours.shape[0] == grid
-                    else refguard.resample(ours[:, :, None], grid)[:, :, 0]
-                )
-                r = refguard.measure(og, ref)
-                if r.flat:
-                    # COUNTED OVER EVERY YIELD, not only the floored ones, so a channel that
-                    # has no entry cannot go flat unnoticed. That is the wider half of the
-                    # b2f1d97 exposure: the entry that regression took away was not in any
-                    # table at the time.
-                    if grid == RENDER2_FLOOR_DIM:
-                        counted[pack] += 1
-                    continue
-                key = (pack, name, chan)
-                if key not in GUARD_TABLE:
-                    continue
-                # LAST ROW WINS, like the numbers in the table: a multi-graph pack yields one
-                # key several times and only the last is what was measured.
-                readings.setdefault(key, {})[grid] = r
+    for pack, (n_flat, got) in zip(todo, results):
+        counted[pack] = n_flat
+        readings.update(got)
     constant = counted
     if not readings:
         print("SKIP test_render2_reference_agreement_does_not_regress: nothing scored")

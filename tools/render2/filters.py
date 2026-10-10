@@ -557,8 +557,6 @@ def f_transformation(ctx, v):
         if v.has("offset"):
             raise Unsupported("offset is a program that does not evaluate 2-wide")
         off = (0.0, 0.0)
-    pos = pos_grid(W, H)
-    c = pos - 0.5
     # THE FOUR WORDS ARE COLUMN-MAJOR. Read as rows -- `x_in = m0 x + m1 y` -- a 90-degree
     # rotation turns the wrong way: RoofTiles record 62 (`0, -1, 1, 0`) lays its shingle
     # rows in place but with every shingle's gradient upside down, height corr -0.79
@@ -569,13 +567,6 @@ def f_transformation(ctx, v):
     if assume.assumed("transformation.matrix", "columns") == "rows":
         m = (m[0], m[2], m[1], m[3])
         assume.note(v.index)
-    in_pos = np.stack(
-        [
-            m[0] * c[:, 0] + m[2] * c[:, 1] + 0.5 + off[0],
-            m[1] * c[:, 0] + m[3] * c[:, 1] + 0.5 + off[1],
-        ],
-        axis=-1,
-    )
     src = np.asarray(ctx.src(v, 0))
     if (
         SHIFTED_TAPS
@@ -589,6 +580,14 @@ def f_transformation(ctx, v):
         return _shift_lerp(
             src.astype(np.float32, copy=False), float(off[0]) * W, float(off[1]) * H
         )
+    c = pos_grid(W, H) - 0.5
+    in_pos = np.stack(
+        [
+            m[0] * c[:, 0] + m[2] * c[:, 1] + 0.5 + off[0],
+            m[1] * c[:, 0] + m[3] * c[:, 1] + 0.5 + off[1],
+        ],
+        axis=-1,
+    )
     scale = footprint_scale(m, W, H, src.shape)
     if scale >= 2.0:
         src = prefilter(src, scale)
@@ -698,9 +697,15 @@ def f_levels(ctx, v):
     t = np.where(degenerate, step, ramp)
 
     m = np.clip(mid, 1e-4, 1 - 1e-4)
+    linear = np.abs(m - 0.5) < 1e-6
     with np.errstate(all="ignore"):
-        gamma = np.power(t, np.log(0.5) / np.log(m))
-    t = np.where(np.abs(m - 0.5) < 1e-6, t, gamma)
+        expo = np.log(0.5) / np.log(m)
+        if np.all(linear):
+            # `gamma` would be discarded at every pixel: skip it, keep `where`'s dtype/shape.
+            shape = np.broadcast_shapes(np.shape(linear), np.shape(t), np.shape(expo))
+            t = np.broadcast_to(t, shape).astype(np.result_type(t, expo))
+        else:
+            t = np.where(linear, t, np.power(t, expo))
     return to_image(np.clip(out_lo + t * (out_hi - out_lo), 0.0, 1.0), N, H, W)
 
 

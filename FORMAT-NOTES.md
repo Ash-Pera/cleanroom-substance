@@ -64423,3 +64423,58 @@ long. So the joints' deficit is not in the blur -- `x8render` / `radius` compens
 something upstream of it in the joint construct (the width of what the stack blurs is the
 first candidate), and that is the next measurement. `total` stays the default; the README's
 "not yet promoted" line is corrected to say this.
+
+## The ratchet 226 s -> 156 s and Bricks' pixel processor 35.6 s -> 22.5 s, every scored output bit-identical
+
+Measured 2026-10-09 against `aedd6b9`, each arm uninstrumented: HEAD from a `git archive`
+export (specimens symlinked), the edit from the working tree holding only it. Logs and
+scripts in `~/Documents/cleanroom-substance-runs/ratchet_speed_1009/`.
+
+    the render2 ratchet             226.4 s -> 156.1 s   passes, 52 x 3, census at 21
+    Bricks pack render (alone)      175.9 s -> 144.7 s
+    Bricks pixelprocessor, 515      35.6 s ->  22.5 s
+    Chesterfield pack (alone)        31.0 s ->  25.0 s
+
+SAME PICTURE, CHECKED WHOLE: every array the ratchet scores (Auras 3, Chesterfield 10,
+Bricks 48) dumped before and after and compared with `array_equal` -- max|d| = 0 on all 61.
+Each rewritten expression was also checked against the old one in isolation, under numpy
+1.26.4 and 2.3.5, dtype and shape included: `levels` 48 cases, the nearest gather 180 (NaN,
++/-inf, |x| > 2^63, non-power-of-two sizes, strided positions), `vec` 27,963, `select` 10,975.
+
+WHERE THE TIME WAS (cProfile of the ratchet at HEAD): Bricks is 178 of 220 s of rendering and
+no filter dominates it -- pixelprocessor 37, fxmaps 31, blend 25, levels 19, dirmotionblur 15,
+transformation 14. So the changes are many and small:
+
+  - THE PACKS RENDER IN PARALLEL, one spawned process each (`_render2_pack_readings`),
+    merged in pack order; `RATCHET_WORKERS=1` restores the serial run. A worker inherits
+    `ASSUME` from the environment but not an in-process scope or the module speed
+    toggles, so both are handed over (`RENDER2_TOGGLES`). Wall becomes ~Bricks; peak memory
+    ~6 GB in total (Bricks 3.2, Chesterfield 2.2, Auras 0.5).
+  - `record_sizes` ran twice per render (the lean renderer and `engine.render` each called
+    it, 2.8 s a call); `engine.render(sizes=)` takes the caller's.
+  - `transformation` built its gather positions before taking the identity-shift path that
+    92% of Bricks' calls take; built after it now.
+  - `levels` computed `t ** (log 0.5 / log mid)` at every pixel and discarded it wherever
+    mid is 0.5; skipped when it is discarded everywhere, with `where`'s dtype and shape kept.
+  - THE PIXEL PROCESSOR'S SAMPLER (`ops.nearest_sampler`, 14 s self on Bricks) is one
+    compiled pass, `fxjit._nearest`: `floor(pos * W)` in pos's dtype, wrapped (`&` on a
+    power of two, which equals numpy's `%` on every int64), gathered. A cast numpy cannot
+    represent -- NaN, +/-inf, beyond int64 -- returns the integer numpy itself gives it,
+    probed at import, so the kernel follows the platform rather than assuming one. 9-10x on
+    a 1024^2 RGBA neighbour tap.
+  - `sbsruntime.vec` writes each column into the result once (it repeated 1-row columns,
+    then concatenated), and `select` lets `where` broadcast a narrow operand instead of
+    repeating it to the branches' width. Shapes the old code rejected take the old path,
+    so its errors are unchanged.
+
+LOOKED AT AND LEFT: `swizzle` (4.6 s) is a copy per call, and only a view avoids it -- which
+would let a program's result alias its operand through the value cache (see "the cache is a
+second dependency graph"); slicing instead of fancy indexing wins only on a full-width
+identity. The sampler's identity-grid `astype` copy (10 s) is deliberate, per its comment.
+The per-record non-finite check is ~0.7 ms; a cheaper exact form saves ~2 s. `_code` is
+already cached by address: its 17,735 compiles are 17,735 programs.
+
+Suites with the change: render2 44, `test_filters` 23 outside the ratchet (the lean renderer
+still matches the whole-file render), fast lane 18 of 19. The one fast-lane failure,
+`test_corpus_paths_are_cwd_independent` (434 corpus files found, 437 expected), fails the same
+way on the HEAD export; it is the corpus, not this.
