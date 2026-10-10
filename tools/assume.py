@@ -365,6 +365,11 @@ QUESTIONS = {
     # 4096-tag record in a 256 graph become 16384 at `$outputsize` 10. FORMAT-NOTES.md,
     # "the curvature step is one declared texel".
     "graph.maxsize": ("none", 4096, 8192, 2048),
+    # HOW `hsl`'s HUE PARAMETER SHIFTS. `twoturn` (default since 2026-10-10): `2 (h - 0.5)`
+    # turns, so 0, 0.5 and 1 are all the identity -- the author's own screenshot shows Auras 004
+    # purple at hue 0 / 0.01, and the corpus clusters stated hues at 0.5. `half`: `h - 0.5`
+    # turns, which made it yellow-green. FORMAT-NOTES.md, "Auras' hue".
+    "hsl.hue": ("twoturn", "half"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

@@ -182,7 +182,7 @@ Current scores, every pack at its export size (`nativeguard.py`, mean over rows;
 
     pack             size   rows    corr     band    |dc|
     Chesterfield     2048    10    +0.950    0.952   0.025
-    Auras             512     3    +0.873    7.131   0.139
+    Auras             512     3    +0.917    3.218   0.079
     Bricks           1024    48    +0.638    1.054   0.033
     RoofTiles        2048     9    +0.563    0.727   0.038
     SandyStonePath   2048    20    +0.176    1.744   0.039

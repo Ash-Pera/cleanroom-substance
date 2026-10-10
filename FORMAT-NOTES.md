@@ -64695,3 +64695,42 @@ under `quadrant`; the lane then reaches the basecolor through four `directionalw
 NEITHER READING DRAWS A PLAUSIBLE NOISE HERE: a hurst-0.75 multi-level noise at opacity 1.5
 should not top out at 0.064. 333's tree is a looping program over slot state with `0x89` gates
 (`fxdisasm.py ... 333`), not a plain octave stack -- which is where the next look goes.
+
+## Auras' hue: `hsl`'s hue slider spans TWO turns -- the author's own Designer screenshot shows graph 004 purple at hue 0 / 0.01, where `h - 0.5` turned it yellow-green. `hsl.hue = twoturn` is the default; Auras +0.873 -> +0.917, band 7.13 -> 3.22, |dc| 0.139 -> 0.079
+
+Found by looking (`refsheet.py Auras`, 2026-10-10): our 004 ring was YELLOW-GREEN, the export's
+PURPLE. Corr could not see it (red corr +0.93 -- both rings carry red); it was band 16.8 and
+dc +0.218 on green. Logs in `~/Documents/cleanroom-substance-runs/auras_1010/`.
+
+WHERE: `conestash.py Auras basecolor --graph 004 --factor 1`. Gradient 424 is purple where lit
+(0.42 0.30 0.75), as the export; `hsl` 425 turns it yellow-green (0.60 0.75 0.30); the second ring
+does the same (442 -> 443). Both hues are a bare `inputref` to graph inputs `hue` (Ring1 Hue,
+default 0) and `hue_1` (Ring2 Hue, default 0.01), sliders 0..1, no presets. `hue + (h - 0.5)`
+made 0 a half turn.
+
+WHAT DECIDES IT is the package itself: `reference_renders/How to change color in SD.jpg` is the
+author's Substance Designer screenshot of graph 004 at Ring1 Hue 0, Ring2 Hue 0.01 -- the node
+thumbnail is PURPLE. So at the declared defaults the engine leaves the gradient's colour alone,
+and the export (`004_purple`) is a default-input render, not a preset. AND THE CORPUS SAYS 0.5 IS
+NEUTRAL TOO (`hsl_census.py`, 442 files, 770 `hsl` records): 177 hue inputs default to 0.5, baked
+hues cluster at 0.49 (21) / 0.51 (16), against 0.0 at 7 baked and 3 inputs. Both are true at once
+only if the slider spans two turns: `hue += 2 (h - 0.5)` makes 0, 0.5 and 1 the identity and 0.01
+a 7-degree nudge. `half` cannot be reconciled with the screenshot; a one-turn `hue += h` cannot be
+reconciled with the corpus.
+
+MEASURED (`nativeguard`): Auras +0.873 / 7.131 / 0.139 -> +0.917 / 3.218 / 0.079 (ch0 +0.928 ->
++0.940, ch1 +0.751 -> +0.858, ch2 +0.938 -> +0.951); Bricks, RoofTiles, Sandy, Chesterfield within
+0.001 (no stated hue reaches their outputs). Ratchet passes after re-taking the three Auras entries
+(old values in comments) and dropping 004/basecolor ch0 band from the census (21). What is left on
+the picture: our ring is too bright at its core and too smooth -- the dead-noise warp driver
+recorded in "Auras' band 7.3 is a dead noise".
+
+THE CELL ARMS, RE-RUN ON THE CORRECT HUE: their refusal was taken on the yellow-green ring.
+`fx.patternsize` / `fx.branchoffset` / `fx.frameoffset = cell` with `twoturn` take Auras to +0.932 /
+1.869 / 0.039 and the ring visibly wispy like the export's; Chesterfield +0.950 -> +0.949 (blue
++0.850 -> +0.870, |dc| 0.025 -> 0.022), Bricks and RoofTiles unchanged, and the ratchet's only
+failures are two Auras bands coming back INSIDE their bars. But SandyStonePath pays: +0.176 ->
++0.171, its honest set's normal ch1 -0.035 / ch0 -0.017 / AO -0.028, and its AO and height gain
+faint axis-aligned RECTANGLES -- the lattice showing through, the same tell that refused
+`firstdraw`. So the cell reading is right for Auras' spiral scanner and wrong for something in
+Sandy; scoping it by what separates the two is the next step. Not promoted.

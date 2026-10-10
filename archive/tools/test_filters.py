@@ -1762,27 +1762,36 @@ GUARD_GRIDS = (128, 256, 512)
 #: bound is not allowed BELOW it -- re-taking can raise a floor and can never lower one, which
 #: `test_the_new_guard_does_not_weaken_the_old_floors` checks directly.
 GUARD_TABLE = {
+    # RE-TAKEN when `hsl.hue = twoturn` became the default (2026-10-10): the ring is purple, as
+    # the export and the author's screenshot are. Was: 128 (+0.9287, 4.1250, +0.1322), 256 (+0.9284, 4.1018, +0.1322), 512 (+0.9282, 4.0904, +0.1322).
+    # FORMAT-NOTES.md, "Auras' hue".
     ('Kutejnikov__Auras', '004/basecolor', 0): Entry(
         at={
-            128: (+0.9287, 4.1250, +0.1322),
-            256: (+0.9284, 4.1018, +0.1322),
-            512: (+0.9282, 4.0904, +0.1322),
+            128: (+0.9403, 2.8055, +0.0874),
+            256: (+0.9403, 2.7921, +0.0873),
+            512: (+0.9403, 2.7855, +0.0873),
         },
         was=(0.9, 256),
     ),
+    # RE-TAKEN when `hsl.hue = twoturn` became the default (2026-10-10): the ring is purple, as
+    # the export and the author's screenshot are. Was: 128 (+0.7526, 18.0974, +0.2179), 256 (+0.7516, 17.2341, +0.2179), 512 (+0.7512, 16.8412, +0.2179).
+    # FORMAT-NOTES.md, "Auras' hue".
     ('Kutejnikov__Auras', '004/basecolor', 1): Entry(
         at={
-            128: (+0.7526, 18.0974, +0.2179),
-            256: (+0.7516, 17.2341, +0.2179),
-            512: (+0.7512, 16.8412, +0.2179),
+            128: (+0.8539, 5.7562, +0.0926),
+            256: (+0.8574, 5.5368, +0.0926),
+            512: (+0.8585, 5.4366, +0.0926),
         },
         was=(0.72, 256),
     ),
+    # RE-TAKEN when `hsl.hue = twoturn` became the default (2026-10-10): the ring is purple, as
+    # the export and the author's screenshot are. Was: 128 (+0.9437, 0.4581, -0.0671), 256 (+0.9396, 0.4612, -0.0671), 512 (+0.9381, 0.4627, -0.0671).
+    # FORMAT-NOTES.md, "Auras' hue".
     ('Kutejnikov__Auras', '004/basecolor', 2): Entry(
         at={
-            128: (+0.9437, 0.4581, -0.0671),
-            256: (+0.9396, 0.4612, -0.0671),
-            512: (+0.9381, 0.4627, -0.0671),
+            128: (+0.9518, 1.4404, +0.0581),
+            256: (+0.9513, 1.4356, +0.0581),
+            512: (+0.9511, 1.4334, +0.0581),
         },
         was=(0.91, 256),
     ),
@@ -2268,7 +2277,7 @@ GUARD_TABLE = {
 #: `record` gives this set less `002/basecolor` ch0 dc, recorded at -0.0197 and pushed just past
 #: `DC_BAR` by `tag`; it was already listed. FORMAT-NOTES.md, "`tag` promoted".
 HEALTH_CENSUS = {
-    (('Kutejnikov__Auras', '004/basecolor', 0), 'band'),
+    # Auras 004/basecolor ch0 band left the census with `hsl.hue = twoturn` (2026-10-10).
     (('Kutejnikov__Auras', '004/basecolor', 0), 'dc'),
     (('Kutejnikov__Auras', '004/basecolor', 1), 'band'),
     (('Kutejnikov__Auras', '004/basecolor', 1), 'dc'),

@@ -842,7 +842,10 @@ def f_hsl(ctx, v):
         hue = np.where(mx == g, (b - r) / np.where(d == 0, 1, d) + 2.0, hue)
         hue = np.where(mx == b, (r - g) / np.where(d == 0, 1, d) + 4.0, hue)
         hue = np.where(d == 0, 0.0, hue / 6.0)
-    hue = (hue + (np.asarray(h) - 0.5)) % 1.0
+    # `hsl.hue`: the shift in turns is `h - 0.5` (`half`) or `2 (h - 0.5)` (`twoturn`, the slider
+    # spanning two turns, so 0, 0.5 and 1 are all the identity). FORMAT-NOTES.md, "Auras' hue".
+    _k = 2.0 if assume.assumed("hsl.hue", "twoturn") == "twoturn" else 1.0
+    hue = (hue + _k * (np.asarray(h) - 0.5)) % 1.0
     sat = np.clip(sat * (2.0 * np.asarray(s)), 0.0, 1.0)
     lum = np.clip(lum + (np.asarray(lu) - 0.5), 0.0, 1.0)
     q = np.where(lum < 0.5, lum * (1.0 + sat), lum + sat - lum * sat)
