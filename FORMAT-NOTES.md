@@ -64653,3 +64653,22 @@ is evaluated, and its `$size` programs read, at the cap. Raised by the 4096-tag 
 1/16 of a rendered pixel. Under 4096 that branch grows 4x (9069 sd 0.0017 -> 0.0069) but never
 reaches an output -- every Bricks output is bit-identical -- and elsewhere it is near-inert:
 Chesterfield +0.950 -> +0.951, Sandy +0.176 -> +0.178 (|dc| 0.039 -> 0.042). Not promoted.
+
+ADDENDUM, same day -- what the 002 value field is NOT, so the next pass starts here:
+
+  - NOT THE STRUCTURE. The selected level 9209 already correlates +0.699 with the export's
+    basecolor luma at 256 px (9195 +0.135, 9202 +0.462, 9217 +0.708, the >= 4096 branch 9284
+    +0.712), and the finished output keeps it (+0.64 / +0.71 / +0.71 per channel at 256). The
+    guard's +0.32 / +0.46 / +0.43 is the 64-px score grid, where the grout lines average away and
+    per-tile colour -- the seed -- is what is left. So this is an AMPLITUDE / LEVEL fault on a
+    correct picture.
+  - NOT THE LADDER'S WEIGHTS OR SIZES. The ladder is `addsub` at opacity 1/`$sizelog2.y`
+    (programs 3527856 and siblings): 9105 0.125, 9111 0.111, 9117 0.100 -- because those records
+    carry size programs that pin them at 256 / 512 / 1024 whatever `$outputsize` is (a
+    deliberate mip ladder, `record_sizes` reads it). Each step adds 0.2 x (level - 0.5).
+  - NOT THE NORMAL'S INTENSITY READING. 9037's intensity is `inputref` 2693776093, default 3.0,
+    and `normal`'s slope convention is pinned by two packs' exports (`f_normal`).
+
+Still open: where the export's ~8x wider value range and its faces near t = 0.62 come from.
+Candidates not yet measured: `hsl` 9291's three programs (hue / saturation / luminosity), and
+whether the engine's `addsub` clamps per step (ours clamps once per blend, as every mode does).
