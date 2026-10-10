@@ -491,6 +491,12 @@ def record_sizes(asm, outputsize):
                     max(1, int(round(rec.height * scale))),
                 )
         out[rec.index] = size or (rec.width, rec.height)
+    # `graph.maxsize`: a record declared above this many pixels is evaluated (and its `$size`
+    # programs read) at the cap. FORMAT-NOTES.md, "the curvature step is one declared texel".
+    cap = assume.assumed("graph.maxsize", "none")
+    if cap != "none":
+        cap = int(cap)
+        out = {i: (min(w, cap), min(h, cap)) for i, (w, h) in out.items()}
     return out
 
 

@@ -361,6 +361,10 @@ QUESTIONS = {
     # under both). `first` is the reading before, an arm. See FORMAT-NOTES.md, "ROOT
     # CAUSE: a multi-graph package has ONE `$outputsize`" and "STATUS: the re-take is done".
     "graph.outputsize": ("pergraph", "first"),
+    # THE LARGEST SIZE A RECORD IS EVALUATED AT, per dimension. `none` (as it was) lets a
+    # 4096-tag record in a 256 graph become 16384 at `$outputsize` 10. FORMAT-NOTES.md,
+    # "the curvature step is one declared texel".
+    "graph.maxsize": ("none", 4096, 8192, 2048),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

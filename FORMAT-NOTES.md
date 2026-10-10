@@ -64606,3 +64606,50 @@ means (`ng_bricks_floor_default.log`; the other packs from `ng_floor_*.log`, the
 What it fixes is the fault found by looking: the round joints. What it costs is top octaves on
 003's normal z and RoofTiles' normal, both already short of them -- which is the direction to
 watch if a later reading of the blur's kernel replaces the floor.
+
+## Bricks' basecolor GROUT is far too light on all five graphs; on 002 it traces to the value field the colour ramps index -- 8x too flat -- and not to any tail blend or to the emboss lane. `graph.maxsize` (new arm) is measured and near-inert
+
+Found by looking (`refsheet.py Bricks`, 2026-10-10): the export's basecolor has near-black grout
+around 002's octagons, dark mortar on 003 and dark joints on 004 / 005; ours does not, while our
+AO grout is right. Measured with the export's own AO as the mask (`grout.py`; grout = AO's
+lowest 8 %, face = above its 60th percentile), runs in
+`~/Documents/cleanroom-substance-runs/grout_1010/`:
+
+    graph   export grout          ours grout            export face           ours face
+    001     0.135 0.102 0.162     0.250 0.239 0.307     0.312 0.321 0.365     0.270 0.267 0.332
+    002     0.080 0.074 0.082     0.222 0.219 0.242     0.377 0.404 0.405     0.321 0.347 0.355
+    003     0.188 0.101 0.092     0.253 0.156 0.140     0.391 0.322 0.271     0.373 0.293 0.241
+    004     0.071 0.046 0.046     0.205 0.141 0.139     0.325 0.310 0.288     0.323 0.272 0.243
+    005     0.081 0.054 0.055     0.201 0.135 0.136     0.307 0.293 0.271     0.313 0.263 0.233
+
+Faces are close; grout is 2-3x too light everywhere. Traced on 002 (`conestash.py Bricks
+basecolor --graph 002`, `tail.py`):
+
+  - THE TAIL IS NOT IT. 9788-9799 are softlight / multiply / overlay of uniforms and gradients
+    through per-tile masks (9240 is 0.52 on faces, 0.18 in grout -- a tile variation, not a
+    grout mask), at baked opacities 0.03-0.24. The one grout mask (9787, 0.84 / 0.03) carries a
+    reddish softlight at 0.24, which cannot make the export's neutral black.
+  - THE EMBOSS LANE IS NOT IT. 9260 / 9264 are flat (sd 0.009); their two unread `w1` fields
+    are 6.64 (both) and 0.25 (9260 only) -- an intensity and a light angle, plausibly -- but the
+    export shows no directional shading to light: the correlation of its high-passed luma with a
+    6-px directional difference of our height is flat in angle (002: +0.49..+0.54 over 360 deg;
+    ours the same), so there is no light direction in it to recover (`lightdir.py`).
+  - THE BASE COLOUR IS THREE GRADIENT MAPS (9286-9288) OF ONE VALUE FIELD, 9285, and 9285 is too
+    flat: 1st-99th percentile 0.438-0.538, grout 0.46 against face 0.50. Decoded, the ramps'
+    dark stops sit low (9288: 0.049 black, 0.359 (0.106 0.129 0.157), 0.639 (0.361 0.431 0.471),
+    1.0 white). The export's grout and face colours sit at about t = 0.30 and t = 0.62 on 9288:
+    the field the export indexed spans ~0.3, ours 0.04, and its faces are not at 0.5.
+  - 9285 IS ONE LEVEL OF A CURVATURE LADDER, chosen by `$sizelog2`. 9274-9285 are mode-7
+    switches whose opacity programs are `$sizelog2.x < k ? 0 : 1` (k = 10, 11, 12 at 9281,
+    9282, 9285): at 1024 the chain selects 9209 and drops the >= 4096 branch (9284). The
+    levels are one-texel differences of the normal's channels (9038 / 9048 shuffled out,
+    inverted, shifted by `-1/$size`, averaged 50/50). The selection is right for a 1024 render
+    as the program reads it; a one-scale curvature cannot put flat faces at 0.62, so whatever
+    the export indexed holds something this level does not. Open.
+
+`graph.maxsize` (new arm, `none` default; 4096 / 8192 / 2048): a record declared above the cap
+is evaluated, and its `$size` programs read, at the cap. Raised by the 4096-tag curvature records
+(9039, 9068-9070, 9152): at `$outputsize` 10 they are declared 16384, so their derivative step is
+1/16 of a rendered pixel. Under 4096 that branch grows 4x (9069 sd 0.0017 -> 0.0069) but never
+reaches an output -- every Bricks output is bit-identical -- and elsewhere it is near-inert:
+Chesterfield +0.950 -> +0.951, Sandy +0.176 -> +0.178 (|dc| 0.039 -> 0.042). Not promoted.
