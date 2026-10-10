@@ -1651,8 +1651,10 @@ record's setup programs are already a fixed point, no entry reads another entry'
 table order cannot matter, and no FX program reads an undeclared graph input; the reciprocal
 reading of a baked size is refuted (FORMAT-NOTES.md, "`patternsize`'s setup chain was never
 out of order"). Sizeless patterns are 1.9% corpus-wide, 18.3% on Auras. Open: the modelled
-curves, the tile lattice, and under the flat draw a cell rather than canvas unit for the
-offsets and size (`fx.patternsize`, `fx.branchoffset`, `fx.frameoffset`, default `canvas`).
+curves and the tile lattice. Under the flat draw a record whose branchoffsets walk an integer
+lattice states its offsets and size in CELLS (`fx.patternsize`, `fx.branchoffset`,
+`fx.frameoffset`, default `cell`; `canvas` is the arm) and combines its patterns by ADD
+(`fx.lattice = add`; `combine` is the arm) -- FORMAT-NOTES.md, "the lattice noise".
 The `(5.0, 1.0)` two-entry family in five of the six reference packs is the −1 construct.
 The one sharp arbiter agrees: ChesterfieldSofa's `metallic` reproduces its export at MAE
 0.0004.

@@ -370,6 +370,10 @@ QUESTIONS = {
     # purple at hue 0 / 0.01, and the corpus clusters stated hues at 0.5. `half`: `h - 0.5`
     # turns, which made it yellow-green. FORMAT-NOTES.md, "Auras' hue".
     "hsl.hue": ("twoturn", "half"),
+    # HOW A CELL-LATTICE FX-MAP COMBINES ITS PATTERNS (only where `fx._cell` finds a lattice).
+    # `add` (default since 2026-10-10): a sum -- overlapping kernels on a grid; `combine`: the
+    # record's ordinary combine, which under `max` prints the grid. FORMAT-NOTES.md, "the lattice noise".
+    "fx.lattice": ("add", "combine"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.
@@ -515,9 +519,12 @@ QUESTIONS = {
     "greyscale.wide": ("first", "refuse"),
     "uniform.fill": (),
     "grayscale.weights": (),
-    "fx.branchoffset": ("canvas", "cell"),
-    "fx.patternsize": ("canvas", "cell"),
-    "fx.frameoffset": ("canvas", "cell"),
+    # `cell` IS THE DEFAULT for all three since 2026-10-10 (with `fx.lattice = add`): a record
+    # whose branchoffsets walk an integer lattice states its sizes and offsets in CELLS.
+    # FORMAT-NOTES.md, "the lattice noise".
+    "fx.branchoffset": ("cell", "canvas"),
+    "fx.patternsize": ("cell", "canvas"),
+    "fx.frameoffset": ("cell", "canvas"),
     # SKIP FIRST, i.e. the default, and it is a READING rather than a guess. `splat` has
     # always carried `if skip_markers and (tag & 0xFF) == 0x08: continue`; the file tags these
     # patterns and we drew them anyway. Of the sizeless patterns on flat-origin fxmaps records,

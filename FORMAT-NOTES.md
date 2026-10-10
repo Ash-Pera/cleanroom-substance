@@ -64734,3 +64734,55 @@ failures are two Auras bands coming back INSIDE their bars. But SandyStonePath p
 faint axis-aligned RECTANGLES -- the lattice showing through, the same tell that refused
 `firstdraw`. So the cell reading is right for Auras' spiral scanner and wrong for something in
 Sandy; scoping it by what separates the two is the next step. Not promoted.
+
+## The lattice noise: the cell arms + `fx.lattice = add` are the default -- a record whose patterns walk an integer lattice states its sizes in CELLS and SUMS them. Auras |dc| 0.079 -> 0.004 on every channel, Chesterfield height dc +0.044 -> +0.001, six census entries recover
+
+Measured 2026-10-10 at `6908b44` (`~/Documents/cleanroom-substance-runs/auras_1010/`).
+
+WHAT THE CELL ARMS TOUCH (`fx333_1010/cellprobe.py`): in every pack, ONE construct -- an
+`0x18B` / `0x89` / `0x1CB` spiral scanner emitting N x N type-5 (`bell`) patterns, tag
+0x15400348, `patternsize` 2.82, N = 2..27 (Auras 391/393 at 27, 300/301 at 17, ...;
+Chesterfield 92/93 at 5; Sandy 188/190 at 17, 933/935 at 18, 183/185 at 2, 678/680 at 4).
+Read in CANVAS units each is N^2 bells 2.82 canvases across, which saturate to a flat 1.0 --
+the "dead noise" of the Auras sections. Read in cells it is a lattice noise.
+
+AND A LATTICE IS A SUM. Under `max`, overlapping identical kernels on a grid draw the grid:
+SandyStonePath's AO and height under the cell arms alone grew faint axis-aligned rectangles
+one 1/17 cell across (`sheets_1010/sandy_ao_crop.png`). `fx.lattice = add` sums exactly the
+records `fx._cell` names a lattice for (the tag's bit 18 is clear, so `bit18` would say the
+same -- but `bit18` as a blanket rule is refuted on Bricks; this is that reading scoped to
+the one construct it is unambiguous on). The rectangles are gone, and Sandy's basecolor grows
+an irregular sand patch of the kind the export is covered in (`sandy_def_vs_lat.png`).
+
+MEASURED, native, cell x3 + `lattice = add` against today's defaults:
+
+    pack           corr            band             |dc|
+    Auras          +0.917 -> +0.877   3.218 -> 0.991   0.079 -> 0.004
+    Chesterfield   +0.950 -> +0.945   0.952 -> 0.808   0.025 -> 0.017
+    Sandy          +0.176 -> +0.140   1.744 -> 1.402   0.039 -> 0.034
+    Bricks         +0.638 -> +0.638   1.054 -> 1.038   0.033 -> 0.033
+    RoofTiles      +0.563 -> +0.563   0.732 -> 0.732   0.037 -> 0.037
+
+Every seed-free quantity that moves, moves toward the export: Auras dc 0.0039 / 0.0038 / 0.0032
+and band 0.997 / 1.012 / 0.969 on its three channels; Chesterfield height dc +0.044 -> +0.001
+and band 1.20 -> 0.89, AO dc -0.017 -> 0.000 and band 1.40 -> 1.10, normal bands 1.20 / 1.20 /
+1.49 -> 0.95 / 0.95 / 1.16, blue corr +0.857 -> +0.895; Sandy's band toward 1. Chesterfield's
+pack-mean band falls only because its basecolor bands (0.21-0.55) dominate the mean. What
+pays is CORRELATION on the rows the revived noise reaches -- Auras ch0 / ch1, Chesterfield
+basecolor ch0 (-0.023) and height (-0.034), Sandy's honest-set normal -- which is the case
+"Auras' band 7.3 is a dead noise" named: a noise drawn with rand's placement, not the engine's,
+correlates worse than a smooth field with the export's mean. The pictures say the noise is
+right: Auras' ring breaks into the export's wisps, Chesterfield's puffs get the export's
+per-puff height variation (`chest_def_vs_lat.png`).
+
+RE-TAKEN (old values in comments): Auras 004/basecolor ch0-2, Chesterfield basecolor ch0 and
+height. CENSUS 21 -> 15: Auras ch0 dc, ch1 band, ch1 dc, ch2 dc, Chesterfield height dc,
+Bricks 005/height dc all come back inside their bars; nothing newly sick. `fxrender.splat`
+(the archived renderer's path) keeps `canvas`, so `render.py`'s own floors are untouched.
+
+The tree arm kept to parity: `test_fxtree.test_a_depth_zero_record_draws_the_same_under_both_arms`
+failed on Bricks 328 (a depth-0 lattice noise, 0.66 apart) because `fx.subdivide = tree` hands
+`splat` depth-0 `Batch`es, which `_cell` does not read. A record whose batches are ALL depth 0 is
+the flat walk; `splat` now expands such batches to the flat dicts when they form a lattice, so
+both arms read it in cells. Default path untouched (it never carries a `Batch`). render2 44,
+`test_filters` 23 + ratchet, fast lane 18/19 (the pre-existing corpus count).

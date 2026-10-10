@@ -1765,33 +1765,42 @@ GUARD_TABLE = {
     # RE-TAKEN when `hsl.hue = twoturn` became the default (2026-10-10): the ring is purple, as
     # the export and the author's screenshot are. Was: 128 (+0.9287, 4.1250, +0.1322), 256 (+0.9284, 4.1018, +0.1322), 512 (+0.9282, 4.0904, +0.1322).
     # FORMAT-NOTES.md, "Auras' hue".
+    # RE-TAKEN when the cell arms + `fx.lattice = add` became the default (2026-10-10): the
+    # lattice noise is alive, dc and band land, corr pays for rand's placement. Was: 128 (+0.9403, 2.8055, +0.0874), 256 (+0.9403, 2.7921, +0.0873), 512 (+0.9403, 2.7855, +0.0873).
+    # FORMAT-NOTES.md, "the lattice noise".
     ('Kutejnikov__Auras', '004/basecolor', 0): Entry(
         at={
-            128: (+0.9403, 2.8055, +0.0874),
-            256: (+0.9403, 2.7921, +0.0873),
-            512: (+0.9403, 2.7855, +0.0873),
+            128: (+0.9128, 0.9970, +0.0039),
+            256: (+0.9121, 0.9961, +0.0039),
+            512: (+0.9118, 0.9959, +0.0039),
         },
         was=(0.9, 256),
     ),
     # RE-TAKEN when `hsl.hue = twoturn` became the default (2026-10-10): the ring is purple, as
     # the export and the author's screenshot are. Was: 128 (+0.7526, 18.0974, +0.2179), 256 (+0.7516, 17.2341, +0.2179), 512 (+0.7512, 16.8412, +0.2179).
     # FORMAT-NOTES.md, "Auras' hue".
+    # RE-TAKEN when the cell arms + `fx.lattice = add` became the default (2026-10-10): the
+    # lattice noise is alive, dc and band land, corr pays for rand's placement. Was: 128 (+0.8539, 5.7562, +0.0926), 256 (+0.8574, 5.5368, +0.0926), 512 (+0.8585, 5.4366, +0.0926).
+    # FORMAT-NOTES.md, "the lattice noise".
     ('Kutejnikov__Auras', '004/basecolor', 1): Entry(
         at={
-            128: (+0.8539, 5.7562, +0.0926),
-            256: (+0.8574, 5.5368, +0.0926),
-            512: (+0.8585, 5.4366, +0.0926),
+            128: (+0.7855, 1.0232, +0.0038),
+            256: (+0.7832, 1.0125, +0.0038),
+            512: (+0.7821, 1.0082, +0.0038),
         },
         was=(0.72, 256),
     ),
     # RE-TAKEN when `hsl.hue = twoturn` became the default (2026-10-10): the ring is purple, as
     # the export and the author's screenshot are. Was: 128 (+0.9437, 0.4581, -0.0671), 256 (+0.9396, 0.4612, -0.0671), 512 (+0.9381, 0.4627, -0.0671).
     # FORMAT-NOTES.md, "Auras' hue".
+    # RE-TAKEN when the cell arms + `fx.lattice = add` became the default (2026-10-10): the
+    # lattice noise is alive, dc and band land, corr pays for rand's placement. Was: 128 (+0.9518, 1.4404, +0.0581), 256 (+0.9513, 1.4356, +0.0581), 512 (+0.9511, 1.4334, +0.0581).
+    # FORMAT-NOTES.md, "the lattice noise".
     ('Kutejnikov__Auras', '004/basecolor', 2): Entry(
         at={
-            128: (+0.9518, 1.4404, +0.0581),
-            256: (+0.9513, 1.4356, +0.0581),
-            512: (+0.9511, 1.4334, +0.0581),
+            128: (+0.9385, 0.9697, +0.0032),
+            256: (+0.9377, 0.9690, +0.0032),
+            512: (+0.9374, 0.9689, +0.0032),
         },
         was=(0.91, 256),
     ),
@@ -2178,11 +2187,14 @@ GUARD_TABLE = {
         },
         was=(0.84, 256),
     ),
+    # RE-TAKEN when the cell arms + `fx.lattice = add` became the default (2026-10-10): the
+    # lattice noise is alive, dc and band land, corr pays for rand's placement. Was: 128 (+0.9186, 0.6216, -0.0978), 256 (+0.9212, 0.6105, -0.0978), 512 (+0.9217, 0.6030, -0.0978).
+    # FORMAT-NOTES.md, "the lattice noise".
     ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0): Entry(
         at={
-            128: (+0.9186, 0.6216, -0.0978),
-            256: (+0.9212, 0.6105, -0.0978),
-            512: (+0.9217, 0.6030, -0.0978),
+            128: (+0.8965, 0.5906, -0.0959),
+            256: (+0.8998, 0.5807, -0.0959),
+            512: (+0.9005, 0.5742, -0.0959),
         },
         was=(0.82, 256),
     ),
@@ -2202,11 +2214,14 @@ GUARD_TABLE = {
         },
         was=(-0.46, 256),
     ),
+    # RE-TAKEN when the cell arms + `fx.lattice = add` became the default (2026-10-10): the
+    # lattice noise is alive, dc and band land, corr pays for rand's placement. Was: 128 (+0.9616, 1.1952, +0.0445), 256 (+0.9615, 1.1977, +0.0445), 512 (+0.9614, 1.1989, +0.0445).
+    # FORMAT-NOTES.md, "the lattice noise".
     ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0): Entry(
         at={
-            128: (+0.9616, 1.1952, +0.0445),
-            256: (+0.9615, 1.1977, +0.0445),
-            512: (+0.9614, 1.1989, +0.0445),
+            128: (+0.9261, 0.8911, +0.0010),
+            256: (+0.9265, 0.8921, +0.0010),
+            512: (+0.9266, 0.8927, +0.0010),
         },
         was=(0.93, 256),
     ),
@@ -2277,11 +2292,9 @@ GUARD_TABLE = {
 #: `record` gives this set less `002/basecolor` ch0 dc, recorded at -0.0197 and pushed just past
 #: `DC_BAR` by `tag`; it was already listed. FORMAT-NOTES.md, "`tag` promoted".
 HEALTH_CENSUS = {
-    # Auras 004/basecolor ch0 band left the census with `hsl.hue = twoturn` (2026-10-10).
-    (('Kutejnikov__Auras', '004/basecolor', 0), 'dc'),
-    (('Kutejnikov__Auras', '004/basecolor', 1), 'band'),
-    (('Kutejnikov__Auras', '004/basecolor', 1), 'dc'),
-    (('Kutejnikov__Auras', '004/basecolor', 2), 'dc'),
+    # Auras 004/basecolor ch0 band left the census with `hsl.hue = twoturn` (2026-10-10); Auras ch0 dc,
+    # ch1 band + dc, ch2 dc, Chesterfield height dc and Bricks 005/height dc with the cell arms +
+    # `fx.lattice = add` the same day (21 -> 15). FORMAT-NOTES.md, "the lattice noise".
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'band'),
@@ -2294,11 +2307,9 @@ HEALTH_CENSUS = {
     (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0), 'dc'),
 }
 

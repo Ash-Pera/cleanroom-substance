@@ -940,12 +940,33 @@ def splat(rec, patterns, W, H, images=None, header=None):
     mode = combine_mode(header)
     cell = None
     for key in ("fx.branchoffset", "fx.patternsize", "fx.frameoffset"):
-        if assume.assumed(key) == "cell":
+        if assume.assumed(key, "cell") == "cell":
             cell = _cell(patterns)
+            # A tree that never subdivides IS the flat walk: its depth-0 batches are the flat
+            # dicts, so a lattice among them is read the same way.
+            if cell is None and patterns and all(
+                isinstance(p, dict)
+                or (p.depth is not None and not np.any(np.asarray(p.depth)))
+                for p in patterns
+            ) and any(not isinstance(p, dict) for p in patterns):
+                flat = [
+                    d
+                    for p in patterns
+                    for d in (p.as_dicts() if not isinstance(p, dict) else [p])
+                ]
+                cell = _cell(flat)
+                if cell is not None:
+                    patterns = flat
             break
-    base_scale = cell if assume.assumed("fx.branchoffset") == "cell" else None
-    size_scale = cell if assume.assumed("fx.patternsize") == "cell" else None
-    frame_scale = cell if assume.assumed("fx.frameoffset") == "cell" else None
+    base_scale = cell if assume.assumed("fx.branchoffset", "cell") == "cell" else None
+    size_scale = cell if assume.assumed("fx.patternsize", "cell") == "cell" else None
+    frame_scale = cell if assume.assumed("fx.frameoffset", "cell") == "cell" else None
+    # `fx.lattice`: a record whose patterns sit on a cell lattice combines them by `add` --
+    # overlapping kernels on a grid are a sum; `max` prints the grid. FORMAT-NOTES.md, "the
+    # lattice noise".
+    if cell is not None and assume.assumed("fx.lattice", "add") == "add":
+        mode = "add"
+        assume.note(rec.index)
     sizeless = assume.assumed("fx.sizeless", "fill")
     bare_skip = assume.assumed("fx.bare", "skip") == "skip"
     skip_root = assume.assumed("fx.rootentry") == "skip"

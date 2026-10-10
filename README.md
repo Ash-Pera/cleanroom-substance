@@ -181,15 +181,16 @@ pixel correlation; then the per-row ratchet (`test_render2_reference_agreement_d
 Current scores, every pack at its export size (`nativeguard.py`, mean over rows; 2026-10-10):
 
     pack             size   rows    corr     band    |dc|
-    Chesterfield     2048    10    +0.950    0.952   0.025
-    Auras             512     3    +0.917    3.218   0.079
-    Bricks           1024    48    +0.638    1.054   0.033
-    RoofTiles        2048     9    +0.563    0.727   0.038
-    SandyStonePath   2048    20    +0.176    1.744   0.039
+    Chesterfield     2048    10    +0.945    0.808   0.017
+    Auras             512     3    +0.877    0.991   0.004
+    Bricks           1024    48    +0.638    1.038   0.033
+    RoofTiles        2048     9    +0.563    0.732   0.037
+    SandyStonePath   2048    20    +0.140    1.402   0.034
 
 What lands: every pack's tile layout, mortar geometry, heights and normals sit on the export;
-Chesterfield is above +0.85 on every row and +0.91 or better on all but one (its `metallic`
-to MAE 0.0004); Bricks 004's
+Chesterfield is above +0.89 on every row (its `metallic` to MAE 0.0004) and its height and AO
+levels on the export (dc +0.001 / 0.000); Auras' ring is the export's purple with its level and
+band on it (|dc| 0.004, band 0.99 -- `hsl.hue`, the lattice noise, 2026-10-10); Bricks 004's
 emission is exact and its six-spoke wheels are the export's thin spokes (`fx.halfbell =
 gaussian`, 2026-09-28).
 
