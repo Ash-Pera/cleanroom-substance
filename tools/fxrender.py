@@ -1627,7 +1627,11 @@ def profile_value(lx, ly, profile):
             t = np.exp(-4.0 * r * r)
         else:
             t = np.clip(1.0 - r * r, 0.0, 1.0)
-        return (t * (ly >= 0.0) * ins).astype(np.float32)
+        # `fx.halfbell.cut`: which axis the bell is halved across -- `y` keeps ly >= 0 (cut
+        # along the pattern's x axis), `x` keeps lx >= 0. FORMAT-NOTES.md, "the wood grain".
+        _cut = assume.assumed("fx.halfbell.cut", "y")
+        half = (lx >= 0.0) if _cut == "x" else (lx <= 0.0) if _cut == "-x" else (ly >= 0.0)
+        return (t * half * ins).astype(np.float32)
     if profile == "ridgedbell":
         t = np.clip(1.0 - r, 0.0, 1.0)
         return (t * np.abs(np.cos(3.0 * np.pi * r)) * ins).astype(np.float32)

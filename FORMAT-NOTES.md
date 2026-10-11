@@ -64786,3 +64786,65 @@ failed on Bricks 328 (a depth-0 lattice noise, 0.66 apart) because `fx.subdivide
 the flat walk; `splat` now expands such batches to the flat dicts when they form a lattice, so
 both arms read it in cells. Default path untouched (it never carries a `Batch`). render2 44,
 `test_filters` 23 + ratchet, fast lane 18/19 (the pre-existing corpus count).
+
+## The wood grain: RoofTiles' grain is drawn by two half-bell FX-Map trees (1103, 1114) that today render flat or saturated; with the tree walk, an absent hurst read as the never-typed 1.0, and the half-bell cut ACROSS its short axis, they draw the export's grain vocabulary at ~2x its scale -- not yet promotable
+
+Continues "CORRECTION: RoofTiles' wood grain is IN THE HEIGHT". Measured 2026-10-10 at `66be873`,
+RoofTiles at 2048 with the 14 x 9 tile overrides (`~/Documents/cleanroom-substance-runs/grain_1010/`).
+
+WHAT THE EXPORT'S GRAIN IS. In the `clear` height's x-derivative and high-pass
+(`grain_crops.png`, `hp_cmp.png`): on every shingle, long nearly-vertical lines joined by
+U-shaped CUPS -- rounded bottoms, cusps where neighbours meet, a "cathedral" pattern -- about
+0.017-0.03 of the canvas across, fine x-structure peaking at ~70 cycles/canvas. Ours has none:
+clean shingle ramps.
+
+WHERE IT COMES FROM. 1184 (the tile height) overlays two global grain lanes: 1113 (mask 1183,
+opacity 0.22) and 1124 (via 1182, mask 79, 0.24). Each is an FX-Map -- 1103 / 1114, tag 128 --
+through four `dirmotionblur`s, two `directionalwarp`s and a `warp`. Both FX-Maps are the same
+tree (`fxtree.cells_of`): five bare quadrant cells, a ONE-output branch-offset cell `0x410008`
+(cartesian(rand(2 pi), 1.4)), and a leaf `0x2d040a48` of type 12 (`halfbell`), `patternrotation`
+0.25, `patternsuppl` 0.78 (read, never used by the renderer), `patternsize` (1.06(10 + rand 10),
+5.2) for 1103 and (32.3, 2.5)-family for 1114, header `opacitymult` 6.5 and NO baked `hurst`.
+The other candidate lane, 1128-1178 (four `background` 0.498 signed-noise FX-Maps, stretched,
+blurred and gradient-mapped), is multiplied by 1127 -- marks at the shingle bottoms -- and is
+the bottom-edge chipping, not the grain; it needs `quadrant` + `fx.combine = background` to
+draw at all (1128/1132/1136/1145 are flat 0.498 otherwise).
+
+WHY OURS IS FLAT, three readings deep, each measured on 1103's own render:
+
+  1. FLAT WALK: one pattern 20.9 x 5.2 CANVASES -> a flat 1.000. The tree walk is required
+     (`quadrant`): 256 leaves in 1/32 regions, 0.16 x 0.36-0.48 of the canvas after rotation.
+  2. ABSENT HURST: under `quadrant` the default `fx.hurst.absent = zero` gives every leaf the
+     full 6.5x, so 1103 saturates to white (mean 0.963) with sparse gaps. THE NEVER-TYPED
+     ARGUMENT NAMES THE DEFAULT (`hurst_census.py`, 41,617 fxmaps): baked hurst values run
+     0.0 (10,924), 0.18, 0.35, 0.42, 0.45, 0.5, 0.59, 0.65, 0.66, 0.7, 0.75, 0.8, 0.85, 0.9,
+     0.95, 1.1, 1.2, 1.34, 1.4, 2.0 -- and 1.0 is NEVER typed (0 records; `opacitymult` 1.0
+     likewise). So an absent hurst is 1.0 -- `fx.hurst.absent = one` -- and under `exp` the
+     depth-5 leaves get 6.5 x 2^-5 = 0.20: 1103 becomes a dense field of tall fingers
+     (`cutx1_cmp.png`).
+  3. THE HALF-BELL'S CUT. `halfbell` keeps `ly >= 0`, i.e. it is halved ALONG its long axis;
+     rotated, that gives vertical lines with sideways ")" bulges. The export's cups need the
+     bell halved ACROSS its short axis, keeping `lx <= 0` (`redraw.py` / `redraw_half.png`
+     draw the captured leaf batch both ways; `cutnx_cmp.png` the real chain). NOTHING HAS
+     DECIDED THIS BEFORE: Bricks' six-spoke wheel, which settled the half-bell's CURVE, is six
+     arms at 60 degrees and gives the same six full-width spokes either way. New arm
+     `fx.halfbell.cut` = `y` (as it was, default), `x`, `-x`, in `fxrender.profile_value` and
+     the `fxjit` kernel (codes 16-19). Under the flat walk it is near-inert: Bricks +0.638 /
+     1.038 / 0.033 unchanged, RoofTiles band 0.732 -> 0.738; the 004 wheel's spokes a pixel
+     wider (14.1 / 12.7 / 11.4 px against today's ~13.4 / 11.8 / 9.9, export 11.3 / 9.6 / 8.3).
+
+WITH ALL THREE (`quadrant` + `twoway` + `absent = one` + `cut = -x`), 1113 shows the export's
+cups with long straight sides -- but (a) at about TWICE the export's width (fingers ~0.04-0.06
+of the canvas against 0.017-0.03); the tree gives no factor of two -- the branch-offset cell
+really has one output, and a one-output node keeping its region would make the leaves LARGER
+-- and (b) at too little amplitude to show in the height through the 0.22 / 0.24 overlays.
+And `absent = one` is not local: it re-weights every unhurst record in tree mode, and RoofTiles
+pays in colour (`ng_grain_roof.log` against `ng_q_roof.log`: basecolor ch1 +0.579 -> +0.436,
+ch2 +0.360 -> +0.191, ch2 dc +0.019 -> +0.105), while its height improves (dc +0.078 ->
+-0.027, band 1.259 -> 1.133). `quadrant` itself remains blocked on Chesterfield's 333 (above).
+
+SO: the grain is located and its vocabulary reproduced; three readings are each supported by
+something other than a fit (the flat walk's 20-canvas pattern is impossible; 1.0 is the
+never-typed hurst; the export's cups are the cross-cut half). The factor-of-two size, the
+amplitude and `absent = one`'s colour cost are open. Nothing promoted; `fx.halfbell.cut` is a
+recorded arm. render2 44 with it registered.

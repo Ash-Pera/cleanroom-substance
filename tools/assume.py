@@ -374,6 +374,11 @@ QUESTIONS = {
     # `add` (default since 2026-10-10): a sum -- overlapping kernels on a grid; `combine`: the
     # record's ordinary combine, which under `max` prints the grid. FORMAT-NOTES.md, "the lattice noise".
     "fx.lattice": ("add", "combine"),
+    # WHICH AXIS `halfbell` IS HALVED ACROSS. `y` (as it was): ly >= 0, the cut along the
+    # pattern's long x axis. `x`: lx >= 0. Bricks' six-spoke wheel cannot tell them apart (six
+    # arms at 60 degrees make the same spokes either way); RoofTiles' wood grain can.
+    # FORMAT-NOTES.md, "the wood grain".
+    "fx.halfbell.cut": ("y", "x", "-x"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

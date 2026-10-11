@@ -37,6 +37,7 @@ ENABLED = True
 P_RECT, P_DISC, P_CONE, P_PARABOLOID, P_GAUSSIAN, P_PYRAMID, P_GRADATION = range(7)
 P_BELL_T2, P_HALFBELL_GAUSS, P_HALFBELL_PARAB, P_RIDGEDBELL, P_THORN = range(7, 12)
 P_BRICK_INSET, P_WAVES, P_CRESCENT, P_CAPSULE = range(12, 16)
+P_HALFBELL_GAUSS_X, P_HALFBELL_PARAB_X, P_HALFBELL_GAUSS_NX, P_HALFBELL_PARAB_NX = range(16, 20)
 
 M_MAX, M_ADD, M_OVER = 0, 1, 2
 MODES = {"max": M_MAX, "add": M_ADD, "over": M_OVER}
@@ -56,11 +57,13 @@ def profile_code(prof, assumed):
     if prof == "bell":
         return P_GAUSSIAN if assumed("fx.bell", "t2") == "gaussian" else P_BELL_T2
     if prof == "halfbell":
-        return (
-            P_HALFBELL_GAUSS
-            if assumed("fx.halfbell", "gaussian") == "gaussian"
-            else P_HALFBELL_PARAB
-        )
+        g = assumed("fx.halfbell", "gaussian") == "gaussian"
+        cut = assumed("fx.halfbell.cut", "y")
+        if cut == "x":
+            return P_HALFBELL_GAUSS_X if g else P_HALFBELL_PARAB_X
+        if cut == "-x":
+            return P_HALFBELL_GAUSS_NX if g else P_HALFBELL_PARAB_NX
+        return P_HALFBELL_GAUSS if g else P_HALFBELL_PARAB
     if prof == "brick":
         return P_RECT if assumed("fx.brick", "fill") == "fill" else P_BRICK_INSET
     return {
@@ -109,6 +112,14 @@ if AVAILABLE:
             return math.exp(-4.0 * r * r) if ly >= 0.0 else 0.0
         if code == P_HALFBELL_PARAB:
             return min(1.0, max(0.0, 1.0 - r * r)) if ly >= 0.0 else 0.0
+        if code == P_HALFBELL_GAUSS_X:
+            return math.exp(-4.0 * r * r) if lx >= 0.0 else 0.0
+        if code == P_HALFBELL_PARAB_X:
+            return min(1.0, max(0.0, 1.0 - r * r)) if lx >= 0.0 else 0.0
+        if code == P_HALFBELL_GAUSS_NX:
+            return math.exp(-4.0 * r * r) if lx <= 0.0 else 0.0
+        if code == P_HALFBELL_PARAB_NX:
+            return min(1.0, max(0.0, 1.0 - r * r)) if lx <= 0.0 else 0.0
         if code == P_RIDGEDBELL:
             return max(0.0, 1.0 - r) * abs(math.cos(3.0 * math.pi * r))
         if code == P_THORN:
