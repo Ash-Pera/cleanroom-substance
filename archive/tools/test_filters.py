@@ -2295,11 +2295,10 @@ HEALTH_CENSUS = {
     # Auras 004/basecolor ch0 band left the census with `hsl.hue = twoturn` (2026-10-10); Auras ch0 dc,
     # ch1 band + dc, ch2 dc, Chesterfield height dc and Bricks 005/height dc with the cell arms +
     # `fx.lattice = add` the same day (21 -> 15). FORMAT-NOTES.md, "the lattice noise".
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'band'),
+    # Bricks 002/basecolor ch0 band, ch1 band and ch1 dc left with `emboss.intensity = fields`
+    # (2026-10-11). FORMAT-NOTES.md, "RoofTiles' basecolor".
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'band'),
     # Enters with `dirmotionblur.extent = floor` (2026-10-10); FORMAT-NOTES.md, "`floor` promoted".
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),

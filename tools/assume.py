@@ -181,7 +181,12 @@ QUESTIONS = {
     # `reference` IS WHAT RUNS: the call sites pass no default, and outside a scope
     # `f_emboss` uses its constant k = 0.1. Re-checked 2026-09-28: `program` fails the
     # ratchet on Bricks 002 basecolor, all three channels (-0.05 to -0.09 corr).
-    "emboss.intensity": ("reference", "program"),
+    # `fields` IS THE DEFAULT since 2026-10-11: the record's w1 field 1 (intensity) times slot
+    # 5's 0.1 * 2048 / $size, lit along w1 field 3 (an angle in turns, 0 when absent) at slot
+    # 4's 0.00586 UV. RoofTiles' rim highlights and Bricks' basecolor bands come with it.
+    # FORMAT-NOTES.md, "RoofTiles' basecolor". `reference` (k = 0.1, a fixed 45-degree offset)
+    # and `program` are the arms.
+    "emboss.intensity": ("fields", "reference", "program"),
     # `divisor` IS THE DEFAULT (the call site's; this tuple listed `numberadded` first until
     # 2026-09-28). Decided decisively when `numberadded` lost 31 of Chesterfield's 41 buttons;
     # re-checked 2026-09-28 it is INERT on Chesterfield, Auras and Bricks -- `fx.leafcount =

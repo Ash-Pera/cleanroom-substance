@@ -183,8 +183,8 @@ Current scores, every pack at its export size (`nativeguard.py`, mean over rows;
     pack             size   rows    corr     band    |dc|
     Chesterfield     2048    10    +0.945    0.808   0.017
     Auras             512     3    +0.877    0.991   0.004
-    Bricks           1024    48    +0.638    1.038   0.033
-    RoofTiles        2048     9    +0.563    0.732   0.037
+    Bricks           1024    48    +0.636    1.052   0.033
+    RoofTiles        2048     9    +0.570    0.779   0.036
     SandyStonePath   2048    20    +0.140    1.402   0.034
 
 What lands: every pack's tile layout, mortar geometry, heights and normals sit on the export;

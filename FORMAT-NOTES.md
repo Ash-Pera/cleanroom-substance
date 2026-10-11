@@ -64848,3 +64848,65 @@ something other than a fit (the flat walk's 20-canvas pattern is impossible; 1.0
 never-typed hurst; the export's cups are the cross-cut half). The factor-of-two size, the
 amplitude and `absent = one`'s colour cost are open. Nothing promoted; `fx.halfbell.cut` is a
 recorded arm. render2 44 with it registered.
+
+## RoofTiles' basecolor: scored against `clear` it is +0.73 / +0.80 / +0.77 and its missing rims are `emboss` -- whose record states its own intensity and light angle, read now (`emboss.intensity = fields`, the default): RoofTiles +0.563 -> +0.570, every Bricks basecolor band toward 1, three Bricks census entries recover
+
+Worked 2026-10-11 at `e2e4fd8` (`~/Documents/cleanroom-substance-runs/roofbc_1011/`).
+
+THE HONEST TARGET. The guard pairs RoofTiles' basecolor with the `old` export (moss and peel at
+inputs the pack does not record). `clear` is rendered at Paint_Age 0, Dirt 0, Moss 0 -- the
+three zeros its constant roughness proves -- and basecolor does not read Paint_Roughness, so
+at the 14 x 9 tiles plus those three inputs (`clearbc.py`) basecolor has a real reference:
+
+                         ch0               ch1               ch2          mean RGB
+    export (clear)                                                       0.212 0.395 0.504
+    ours, before    +0.730 0.961 +0.027   +0.801 0.618 -0.025   +0.769 0.835 -0.061   0.239 0.370 0.443
+
+LOOKED (`bc_cmp.png`): the export's shingles carry a bright cyan RIM along their bottom edges
+and sides with dark grooves between, grain lines, and a saturated blue; ours is soft-edged,
+greyer, and swept by large faint orange arcs.
+
+THE RIMS ARE `emboss`. The paint is `Paint_Color` (2004, the declared 0.170 0.432 0.620)
+overlaid at 0.94 with 2005 = a gradient of an emboss pair (1997 / 2001) applied to the two
+channels of the shingles' normal map 1782 -- a curvature estimate, which lights convex rims and
+darkens grooves. Ours was flat (sd 0.013-0.015). Each emboss record carries two fields the
+renderer ignored, and two programs it misread:
+
+    record   w1 field 1   w1 field 3   slot 4 program                 slot 5 program
+    1997       6.01         0.25       texel; 0.00586 * size * (1,-1)   0.1 * 2048 / $size
+    2001       6.01         --         the same                         the same
+    2219/2221  8.21         -- / 0.25  the same                         the same
+    Bricks 9260 / 9264  6.64 / 0.25 and 6.64 / --
+
+The pairs are horizontal + vertical (field 3 = a quarter turn on one, absent on the other); the
+earlier reading of slot 4's (1, -1) as a fixed 45-degree light ("emboss: a built-in
+directional gradient") took a per-axis scale with a y flip for a direction. `fields`:
+`k = field1 * 0.1 * 2048 / $size`, offset 0.00586 UV along `(cos, -sin)(2 pi field3)` --
+k is 0.60 on RoofTiles at 2048 where `reference` used 0.1. The four sign conventions scored
+against `clear` (`embvar.py`) put the program's own (1, -1) first (corr +0.753 / +0.808 / +0.778).
+The rims and grooves appear (`fields_cmp.png`).
+
+MEASURED, every pack native, `fields` against today's defaults: Auras, Chesterfield, Sandy
+IDENTICAL; RoofTiles +0.563 / 0.732 / 0.037 -> +0.570 / 0.779 / 0.036; Bricks +0.638 / 1.038 /
+0.033 -> +0.636 / 1.052 / 0.033 -- every Bricks basecolor band rises toward 1 (002 0.15-0.18 ->
+0.26-0.28, 004 / 005 +0.03-0.05), 002 basecolor corr -0.023..-0.029 at the 64-px score grid.
+THE RATCHET'S ONLY OBJECTION IS IMPROVEMENT: Bricks 002/basecolor ch0 band, ch1 band, ch1 dc
+come back inside their bars and leave the census (15 -> 12). Promoted; `reference` and
+`program` are arms. Against `clear` at the default walk: +0.737 / +0.806 / +0.774, bands
+1.129 / 0.821 / 0.985.
+
+WHAT IS LEFT, located:
+  - THE ORANGE ARCS are 2209's softlight of orange 2011 through mask 2208, whose swirls are
+    FX-Map 2199 stamping image 2198 (concentric arcs, 25 stamps of 0.19-0.80 canvas -- what
+    the file states). The mask keeps only where 2206 = max(swirls, noise 2189) is low, and
+    2189 is built from records the flat walk cannot draw (2154 / 2160 Voronoi nets, 2166 /
+    2168 single bands, 2155 / 2162 background-0.498 noises). Under `quadrant` + `twoway` the
+    arcs fade to faint patches and basecolor against `clear` reads +0.754 / +0.808 / +0.778
+    with dc +0.010 / -0.013 / -0.031 (from +0.027 / -0.024 / -0.061); `fx.combine = background`
+    on top +0.765 / +0.806 / ... -- so on its honest target RoofTiles' colour is FOR the tree
+    walk, not against it as the `old` pairing said. `quadrant` stays blocked on Chesterfield 333.
+  - THE COLOUR BUDGET down the paint chain (mean RGB): 2004 paint 0.170 0.432 0.620 -> 2007
+    0.174 0.432 0.608 -> 2012 0.181 0.357 0.468 -> 2016 0.214 0.383 0.478 -> 2209 0.239
+    0.370 0.443; export 0.212 0.395 0.504. 2016 is already near the export; the last step --
+    the orange through the swirl mask -- is what greys it.
+  - THE GRAIN, "the wood grain" above.

@@ -16,6 +16,7 @@ would do.
 """
 
 import math
+import struct
 import re
 
 import numpy as np
@@ -1358,9 +1359,21 @@ def f_emboss(ctx, v):
     smp = sampler(ctx.src(v, 1))
     OFF = 0.005859375
     g0 = to_image(smp(pos), N, H, W)[:, :, :1]
+    if assume.assumed("emboss.intensity", "fields") == "fields":
+        # `fields`: the record's own w1 fields -- field 1 an intensity, field 3 a light angle in
+        # turns (0 when absent) -- times slot 5's `0.1 * 2048 / $size`; the sample offset is
+        # slot 4's 0.00586 UV, along the angle. FORMAT-NOTES.md, "RoofTiles' basecolor".
+        f = {fld: struct.unpack("<f", struct.pack("<I", int(v.words[s]) & 0xFFFFFFFF))[0]
+             for kind, fld, s, _w in v.ignored if kind == "w1"}
+        th = 2.0 * math.pi * float(f.get(3, 0.0))
+        off = np.array([OFF * math.cos(th), -OFF * math.sin(th)], np.float32)
+        g1 = to_image(smp(pos + off), N, H, W)[:, :, :1]
+        k = float(f.get(1, 1.0)) * 0.1 * 2048.0 / float(v.width or 2048)
+        assume.note(v.index)
+        return np.clip(base + k * (g0 - g1), 0.0, 1.0)
     g1 = to_image(smp(pos + np.array([OFF, -OFF], np.float32)), N, H, W)[:, :, :1]
     k = 0.1
-    if assume.assumed("emboss.intensity") == "program":
+    if assume.assumed("emboss.intensity", "fields") == "program":
         for q in ctx.walk_programs(v):
             try:
                 got = np.asarray(ctx.run(v, q, 1)).ravel()
