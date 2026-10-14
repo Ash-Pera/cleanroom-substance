@@ -65103,3 +65103,19 @@ Each overshoots the height to the other sign and gives back the tree walk's whol
 the answer sits between `max` and a blanket sum, so it is a property of particular records (the
 deep strip / bubble scatters), not a combine rule. Open: what structurally separates them --
 not to be chosen by which records happen to fix the dc.
+
+ADDENDUM -- the combine x hurst 2 x 2 under the tree (`ngB2_*`, `ngC2_*`, `ratchet_b18_exp2.log`), all on
+top of the hsl arms + `quadrant` + `twoway`, with `fx.hurst = exp2` (2^(-2 h d)):
+
+    combine      Bricks corr  band   |dc|   height dc 002..005           roughness bands   Chesterfield
+    max          +0.634      0.874  0.010  +.036 +.034 +.035 +.047      1.02-1.39         +0.956
+    bit18        +0.620      0.897  0.009  +.002 +.008 +.006 +.011      1.37-2.13         +0.955
+    background   +0.630      0.910  0.010  +.026 +.025 +.030 +.040      1.34-2.01         +0.955
+
+`bit18` + `exp2` puts the height dc at or under the flat walk's (+.009 / .000 / .009 / .018) -- undeclared
+patterns (bit 18 clear) drawing by add/sub, with the per-AREA depth gain -- and leaves Chesterfield
+alone. The ratchet still refuses 12 rows, now a different 12: the four height dc rows clear and corr
+rows take their place (002 normal ch2 0.92, 002 / 005 roughness 0.81 / 0.76, 005 height 0.40-0.42,
+003 basecolor ch1 / ch2, 005 basecolor ch2), with 003 height band 1.20 and the hsl arms' three small
+dc rows unchanged. A trade, not a fix; nothing promoted. With `exp` the same `bit18` overshot to
+-0.04..-0.06, so the two arms are one question, as `b559d16` said of (subdivide, hurst).
