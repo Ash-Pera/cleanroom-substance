@@ -375,12 +375,13 @@ QUESTIONS = {
     # purple at hue 0 / 0.01, and the corpus clusters stated hues at 0.5. `half`: `h - 0.5`
     # turns, which made it yellow-green. FORMAT-NOTES.md, "Auras' hue".
     "hsl.hue": ("twoturn", "half"),
-    # `hsl`'s SATURATION and LUMINOSITY sliders. `scale` / `half` (as they were): saturation
-    # times 2s, luminosity plus (l - 0.5). `full`: each an OFFSET of 2 (x - 0.5), the slider
-    # spanning -1..+1 as the hue slider spans two turns -- Chesterfield's button hsl 866
-    # (0.65 / 0.6) then lands on the export's gold. FORMAT-NOTES.md, "the buttons are hsl".
-    "hsl.saturation": ("scale", "full"),
-    "hsl.luminosity": ("half", "full"),
+    # `hsl`'s SATURATION and LUMINOSITY sliders. `full` (default since 2026-10-14): each an
+    # OFFSET of 2 (x - 0.5), the slider spanning -1..+1 as the hue slider spans two turns --
+    # Chesterfield's button hsl 866 (0.65 / 0.6) lands on the export's gold and Bricks 004's
+    # emission matches the export exactly. `scale` / `half` (as they were, now the arms):
+    # saturation times 2s, luminosity plus (l - 0.5). FORMAT-NOTES.md, "the buttons are hsl".
+    "hsl.saturation": ("full", "scale"),
+    "hsl.luminosity": ("full", "half"),
     # HOW A CELL-LATTICE FX-MAP COMBINES ITS PATTERNS (only where `fx._cell` finds a lattice).
     # `add` (default since 2026-10-10): a sum -- overlapping kernels on a grid; `combine`: the
     # record's ordinary combine, which under `max` prints the grid. FORMAT-NOTES.md, "the lattice noise".

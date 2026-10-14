@@ -65119,3 +65119,26 @@ rows take their place (002 normal ch2 0.92, 002 / 005 roughness 0.81 / 0.76, 005
 003 basecolor ch1 / ch2, 005 basecolor ch2), with 003 height band 1.20 and the hsl arms' three small
 dc rows unchanged. A trade, not a fix; nothing promoted. With `exp` the same `bit18` overshot to
 -0.04..-0.06, so the two arms are one question, as `b559d16` said of (subdivide, hurst).
+
+## `hsl.saturation` / `hsl.luminosity = full` promoted (2026-10-14)
+
+The owner's call, on the evidence in "the buttons are `hsl`": both sliders read as offsets of
+2(x - 0.5) by default; `scale` / `half` are the arms. Native, every pack at its export size
+(old -> new mean over rows): Chesterfield +0.945 / 0.808 / 0.017 -> +0.946 / 0.928 / 0.016 (the
+buttons' gold, basecolor bands 0.57 / 0.55 / 0.21 -> 0.83 / 0.96 / 0.74), Bricks +0.636 / 1.052 /
+0.033 -> +0.636 / 1.065 / 0.032 (004 emission corr 1.000 on every channel, 004 / 005 basecolor the
+export's grey), Auras unchanged, RoofTiles +0.570 -> +0.569, Sandy band 1.402 -> 1.397.
+
+The ratchet's six refusals were re-taken at their measured values, the old values kept in the
+comments: Bricks 002 basecolor ch2, 004 basecolor ch0-2, 005 basecolor ch1, Chesterfield
+basecolor ch2. Each pays a small dc (-0.011..-0.020) for the right hue, and Bricks 004 ch0's band
+(0.46 -> 0.40-0.46) falls with the warm cast it no longer has; corr rises on all six (Bricks 004
+ch0 +0.538 -> +0.606, 002 ch2 +0.368 -> +0.405, Chesterfield ch2 +0.855 -> +0.914). Census:
+Bricks 002 / 004 / 005 basecolor ch0 dc and Chesterfield basecolor ch2 band leave, Chesterfield
+basecolor ch2 dc enters. Suites: render2 19, test_filters 24 including the ratchet. Logs:
+`cleanroom-substance-runs/hslpromote_1014`.
+
+What this does to the tree walk, re-measured on the new defaults (`ASSUME=fx.subdivide=quadrant,
+fx.tree.gate=twoway`, `ratchet_tree.log`): 9 refused rows, all Bricks, the 12 of "quadrant +
+twoway on top of the hsl arms" less the three hsl dc rows -- height dc 002-005 (+0.029..+0.045),
+003 basecolor corr x3, 003 height band 1.18, 004 normal ch2 band 1.20. Not promoted.

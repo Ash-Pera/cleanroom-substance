@@ -1831,11 +1831,15 @@ GUARD_TABLE = {
         was=(0.64, 256),
         companion=('bricks_tile_octaves', 0.64),
     ),
+    # RE-TAKEN when `hsl.saturation` / `hsl.luminosity = full` became the default (2026-10-14):
+    # the stone is grey as the export's is, no longer pink-brown; dc goes a
+    # little negative and 004 ch0's band falls with the warm cast it no longer has. Was: 128 (+0.3636, 0.1743, -0.0106), 256 (+0.3682, 0.1560, -0.0106), 512 (+0.3690, 0.1537, -0.0106).
+    # FORMAT-NOTES.md, "the buttons are hsl".
     ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2): Entry(
         at={
-            128: (+0.3636, 0.1743, -0.0106),
-            256: (+0.3682, 0.1560, -0.0106),
-            512: (+0.3690, 0.1537, -0.0106),
+            128: (+0.4039, 0.2360, -0.0181),
+            256: (+0.4047, 0.2402, -0.0181),
+            512: (+0.4042, 0.2490, -0.0181),
         },
         was=(0.63, 256),
         companion=('bricks_tile_octaves', 0.63),
@@ -1986,29 +1990,41 @@ GUARD_TABLE = {
         was=(0.7, 256),
         companion=('bricks_tile_octaves', 0.7),
     ),
+    # RE-TAKEN when `hsl.saturation` / `hsl.luminosity = full` became the default (2026-10-14):
+    # the stone is grey as the export's is, no longer pink-brown; dc goes a
+    # little negative and 004 ch0's band falls with the warm cast it no longer has. Was: 128 (+0.5353, 0.5160, +0.0346), 256 (+0.5379, 0.4739, +0.0346), 512 (+0.5384, 0.4639, +0.0346).
+    # FORMAT-NOTES.md, "the buttons are hsl".
     ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0): Entry(
         at={
-            128: (+0.5353, 0.5160, +0.0346),
-            256: (+0.5379, 0.4739, +0.0346),
-            512: (+0.5384, 0.4639, +0.0346),
+            128: (+0.6013, 0.4571, -0.0132),
+            256: (+0.6056, 0.4129, -0.0132),
+            512: (+0.6063, 0.4015, -0.0132),
         },
         was=(0.64, 256),
         companion=('bricks_tile_octaves', 0.64),
     ),
+    # RE-TAKEN when `hsl.saturation` / `hsl.luminosity = full` became the default (2026-10-14):
+    # the stone is grey as the export's is, no longer pink-brown; dc goes a
+    # little negative and 004 ch0's band falls with the warm cast it no longer has. Was: 128 (+0.6516, 0.4836, -0.0002), 256 (+0.6520, 0.4588, -0.0002), 512 (+0.6519, 0.4532, -0.0002).
+    # FORMAT-NOTES.md, "the buttons are hsl".
     ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1): Entry(
         at={
-            128: (+0.6516, 0.4836, -0.0002),
-            256: (+0.6520, 0.4588, -0.0002),
-            512: (+0.6519, 0.4532, -0.0002),
+            128: (+0.7138, 0.4815, -0.0153),
+            256: (+0.7161, 0.4413, -0.0153),
+            512: (+0.7164, 0.4298, -0.0153),
         },
         was=(0.71, 256),
         companion=('bricks_tile_octaves', 0.71),
     ),
+    # RE-TAKEN when `hsl.saturation` / `hsl.luminosity = full` became the default (2026-10-14):
+    # the stone is grey as the export's is, no longer pink-brown; dc goes a
+    # little negative and 004 ch0's band falls with the warm cast it no longer has. Was: 128 (+0.6621, 0.3934, -0.0079), 256 (+0.6625, 0.3686, -0.0080), 512 (+0.6624, 0.3632, -0.0080).
+    # FORMAT-NOTES.md, "the buttons are hsl".
     ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 2): Entry(
         at={
-            128: (+0.6621, 0.3934, -0.0079),
-            256: (+0.6625, 0.3686, -0.0080),
-            512: (+0.6624, 0.3632, -0.0080),
+            128: (+0.7125, 0.4295, -0.0153),
+            256: (+0.7147, 0.3933, -0.0153),
+            512: (+0.7150, 0.3835, -0.0153),
         },
         was=(0.72, 256),
         companion=('bricks_tile_octaves', 0.72),
@@ -2116,11 +2132,15 @@ GUARD_TABLE = {
         },
         was=(-0.05, 256),
     ),
+    # RE-TAKEN when `hsl.saturation` / `hsl.luminosity = full` became the default (2026-10-14):
+    # the stone is grey as the export's is, no longer pink-brown; dc goes a
+    # little negative and 004 ch0's band falls with the warm cast it no longer has. Was: 128 (+0.6295, 0.3676, +0.0056), 256 (+0.6323, 0.3705, +0.0056), 512 (+0.6326, 0.3736, +0.0056).
+    # FORMAT-NOTES.md, "the buttons are hsl".
     ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1): Entry(
         at={
-            128: (+0.6295, 0.3676, +0.0056),
-            256: (+0.6323, 0.3705, +0.0056),
-            512: (+0.6326, 0.3736, +0.0056),
+            128: (+0.6658, 0.4252, -0.0112),
+            256: (+0.6697, 0.3983, -0.0112),
+            512: (+0.6704, 0.3912, -0.0112),
         },
         was=(0.2, 256),
     ),
@@ -2206,11 +2226,15 @@ GUARD_TABLE = {
         },
         was=(0.92, 256),
     ),
+    # RE-TAKEN when `hsl.saturation` / `hsl.luminosity = full` became the default (2026-10-14):
+    # the buttons are the export's gold; corr and band
+    # rise, dc goes a little negative. Was: 128 (+0.8505, 0.1751, -0.0041), 256 (+0.8545, 0.1826, -0.0041), 512 (+0.8552, 0.1900, -0.0041).
+    # FORMAT-NOTES.md, "the buttons are hsl".
     ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2): Entry(
         at={
-            128: (+0.8505, 0.1751, -0.0041),
-            256: (+0.8545, 0.1826, -0.0041),
-            512: (+0.8552, 0.1900, -0.0041),
+            128: (+0.9050, 0.8312, -0.0204),
+            256: (+0.9138, 0.7793, -0.0204),
+            512: (+0.9159, 0.7540, -0.0204),
         },
         was=(-0.46, 256),
     ),
@@ -2297,18 +2321,18 @@ HEALTH_CENSUS = {
     # `fx.lattice = add` the same day (21 -> 15). FORMAT-NOTES.md, "the lattice noise".
     # Bricks 002/basecolor ch0 band, ch1 band and ch1 dc left with `emboss.intensity = fields`
     # (2026-10-11). FORMAT-NOTES.md, "RoofTiles' basecolor".
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
     # Enters with `dirmotionblur.extent = floor` (2026-10-10); FORMAT-NOTES.md, "`floor` promoted".
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'band'),
+    # Bricks 002/004/005 basecolor ch0 dc and Chesterfield basecolor ch2 band left, and Chesterfield
+    # basecolor ch2 dc entered, with `hsl.saturation` / `hsl.luminosity = full` (2026-10-14).
+    # FORMAT-NOTES.md, "the buttons are hsl".
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0), 'dc'),
 }
 

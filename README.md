@@ -178,14 +178,14 @@ pixel correlation; then the per-row ratchet (`test_render2_reference_agreement_d
 52 entries × 3 grids, a frozen health census). Readings the file does not settle are
 `assume.QUESTIONS` arms; their defaults, and why, are `SPEC.md` §13.9.
 
-Current scores, every pack at its export size (`nativeguard.py`, mean over rows; 2026-10-10):
+Current scores, every pack at its export size (`nativeguard.py`, mean over rows; 2026-10-14):
 
     pack             size   rows    corr     band    |dc|
-    Chesterfield     2048    10    +0.945    0.808   0.017
+    Chesterfield     2048    10    +0.946    0.928   0.016
     Auras             512     3    +0.877    0.991   0.004
-    Bricks           1024    48    +0.636    1.052   0.033
-    RoofTiles        2048     9    +0.570    0.779   0.036
-    SandyStonePath   2048    20    +0.140    1.402   0.034
+    Bricks           1024    48    +0.636    1.065   0.032
+    RoofTiles        2048     9    +0.569    0.776   0.036
+    SandyStonePath   2048    20    +0.140    1.397   0.033
 
 What lands: every pack's tile layout, mortar geometry, heights and normals sit on the export;
 Chesterfield is above +0.89 on every row (its `metallic` to MAE 0.0004) and its height and AO

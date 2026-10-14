@@ -847,15 +847,15 @@ def f_hsl(ctx, v):
     # spanning two turns, so 0, 0.5 and 1 are all the identity). FORMAT-NOTES.md, "Auras' hue".
     _k = 2.0 if assume.assumed("hsl.hue", "twoturn") == "twoturn" else 1.0
     hue = (hue + _k * (np.asarray(h) - 0.5)) % 1.0
-    # `hsl.saturation` / `hsl.luminosity`: `full` reads both as offsets of 2 (x - 0.5), as the
-    # hue slider is read. FORMAT-NOTES.md, "the buttons are hsl".
-    if assume.assumed("hsl.saturation", "scale") == "full":
+    # `hsl.saturation` / `hsl.luminosity`: `full` (the default) reads both as offsets of 2 (x - 0.5),
+    # as the hue slider is read; `scale` / `half` are the arms. FORMAT-NOTES.md, "the buttons are hsl".
+    if assume.assumed("hsl.saturation", "full") == "full":
         sat = np.clip(sat + 2.0 * (np.asarray(s) - 0.5), 0.0, 1.0)
-        assume.note(v.index)
     else:
         sat = np.clip(sat * (2.0 * np.asarray(s)), 0.0, 1.0)
-    _kl = 2.0 if assume.assumed("hsl.luminosity", "half") == "full" else 1.0
-    if _kl != 1.0:
+        assume.note(v.index)
+    _kl = 2.0 if assume.assumed("hsl.luminosity", "full") == "full" else 1.0
+    if _kl != 2.0:
         assume.note(v.index)
     lum = np.clip(lum + _kl * (np.asarray(lu) - 0.5), 0.0, 1.0)
     q = np.where(lum < 0.5, lum * (1.0 + sat), lum + sat - lum * sat)
