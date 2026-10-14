@@ -65069,3 +65069,37 @@ and the hsl arms' own small basecolor dc (002 ch2, 004 ch1 / ch2, -0.013..-0.016
 Chesterfield rows that refused `quadrant` on 10-10 are gone: what read as "record 333" was the
 buttons' contrast, and with the buttons right the tree walk is worth +0.045 on Chesterfield's blue.
 Next: Bricks' height dc under the tree (one sign, four graphs).
+
+## Bricks' height dc under the tree walk: two FX-Map families empty out (3126's bubbles, the 2886 / 2889 / 3048 / 3051 strip trees -- 333's construct); no global `fx.combine` fixes it
+
+Measured 2026-10-14, Bricks native, `hsl.saturation / luminosity = full` + `quadrant` + `twoway`
+throughout (`~/Documents/cleanroom-substance-runs/bheight_1014/`). Under the tree the ratchet's height
+rows are dc +0.034 / +0.029 / +0.035 / +0.045 on 002-005 (flat walk +0.009 / +0.000 / +0.009 /
++0.018). 005's height cone (`conestash` both walks, `roots.py`): 415 of 710 records differ, from 12
+roots. Reverting one family at a time to the flat walk (`sheet333.py RECS=... RECARMS=
+fx.subdivide=flat`), 005 height dc:
+
+    none (tree)                          +0.045
+    2495 / 2497                          +0.048
+    2843 / 2844 / 2848 / 2851            +0.045
+    2859                                 +0.045
+    2886 / 2889 / 3048 / 3051            +0.030   (strip trees: 0.31 -> 0.014 mean under the tree)
+    3126                                 +0.021   (256 depth-4 bells: 0.26 -> 0.13)
+
+2889 is Chesterfield 333's construct exactly (bare quadrants, jittered branch levels, 4,096 +
+8,192 rand-rotated 5 x 1 strips at depths 6 / 7, leaf tags 0x12410648 / 0x12400648, bit 18
+clear); 2886 the same at depths 4 / 5. Under `max` with the `exp` hurst gain they draw almost
+nothing, so the chipping they cut leaves the height high.
+
+GLOBAL COMBINE READINGS ON TOP, all refused (Bricks / Chesterfield native):
+
+    arm          Bricks corr  band   |dc|   height dc 002..005          roughness bands   Chesterfield
+    max (today)  +0.633      0.881  0.009  +.034 +.029 +.035 +.045     1.05-1.44         +0.956
+    bit18        +0.599      1.043  0.033  -.057 -.055 -.043 -.047     3.1-4.4           +0.931
+    background   +0.605      1.008  0.030  -.076 -.077 -.069 -.060     3.0-4.3           +0.933
+    add          +0.600      1.053  0.033  -.059 -.055 -.045 -.048     3.2-4.3           +0.627
+
+Each overshoots the height to the other sign and gives back the tree walk's whole roughness repair;
+the answer sits between `max` and a blanket sum, so it is a property of particular records (the
+deep strip / bubble scatters), not a combine rule. Open: what structurally separates them --
+not to be chosen by which records happen to fix the dc.
