@@ -64910,3 +64910,64 @@ WHAT IS LEFT, located:
     0.370 0.443; export 0.212 0.395 0.504. 2016 is already near the export; the last step --
     the orange through the swirl mask -- is what greys it.
   - THE GRAIN, "the wood grain" above.
+
+## Chesterfield's `quadrant` blocker is NOT record 333: the blue-row loss is the BUTTONS, whose colour ramp is indexed at the pit floor (0.36) where the export needs ~0.7. 333's gain is a basecolor/roughness trade no single amplitude settles
+
+Measured 2026-10-14 at `d5c0b77`, Chesterfield at 2048 (`~/Documents/cleanroom-substance-runs/fx333_1014/`;
+`sheet333.py` runs refsheet / nativeguard with arms or a gain applied to NAMED records only --
+`RECS`, `RECARMS`, `RECARMS_<rec>`, `DUMP`, `SAVEPAIRS`, `PRINT`). Python with numpy/numba on this
+machine is `/opt/anaconda3/bin/python3`; the homebrew and system pythons have no numpy.
+
+WHAT 333 IS. The `0x18B` / `0x89` scanner reads slot 8, the aspect gridsize, so on a square canvas
+it is a 1 x 1 wrapper (not one of "the lattice noise"'s N x N constructs). Under it: three bare
+quadrants, three branch-offset levels jittered by rand(0, 0.25, 0.125), and two drawing levels at
+depths 6 / 7 (4,096 + 16,384 rand-rotated 5 x 1 half-region strips, the second at opacity 0.85),
+hurst 0.75, opacitymult 1.5. 331 is the same tree at depths 4 / 5 with opacity -1 over a baked
+background 1.0. Under `quadrant` + `twoway` (today's other defaults):
+
+    333 reading                      333 mean / sd / max       bc ch2 corr  rough corr / band / dc
+    flat walk (default)              0.959 / 0.059 / 1.000     +0.895      +0.915 / 0.690 / -0.060
+    quadrant, exp (as refused)       0.040 / 0.013 / 0.066     +0.667      +0.938 / 0.915 / +0.016
+      x2 / x4 / x8 / x15 on 333                                +0.669 / +0.672 / +0.741 / +0.884
+                                                rough corr     +0.937 / +0.935 / +0.923 / +0.878
+      pow / off on 333                                         +0.672 / +0.893   +0.936 / +0.887
+    quadrant, 333 fx.combine=add     0.166 / 0.093 / 0.913     +0.674      +0.914 / 0.937 / +0.005
+    ... + 331 fx.combine=background  (331: 0.635 / 0.179)      +0.853      +0.761 / 1.102 / -0.025
+
+No gain on 333 alone satisfies both: basecolor blue wants 333 saturated (334 = 332 - 333 dead),
+roughness wants it faint. Under `add` 333 is a fibre/scratch noise -- the first plausible noise
+either reading has drawn for it (`rec333_stretched.png`) -- and it gives roughness the export's
+cloudy mottle by eye (`crop_bc_rough.png`), but it scores as `exp` does. 334 is not a mask: it is
+the IMAGE all eight `directionalwarp`s smear (119 is their intensity), and it reaches basecolor
+twice (warp stack -> 347 gradient -> 351 hsl; 362/363 transformation -> 853 -> 858 mask into
+859) and roughness once (855) (`downpath.py`).
+
+THE BLUE LOSS IS THE BUTTONS. At the 384-px display grid (saved pairs, not the guard's grid):
+
+    variant            ch2 corr    off-button only    with our button level set to the export's
+    default            0.911       0.838              0.943
+    quadrant           0.778       0.817              0.945
+    quadrant + add333  0.781       0.818              0.946
+
+Off the buttons `quadrant` costs 0.02; the rest is button-vs-puff contrast. Our buttons are
+(0.794, 0.561, 0.256) where the export's are (0.897, 0.665, 0.369) -- about 0.12 low in every
+channel, in EVERY arm -- and `quadrant` raises puff blue 0.182 -> 0.202 (export 0.185), shrinking
+a contrast that was already too small. LOOKED (`blue.png`): the export's buttons are the
+brightest thing in blue; ours sit mid-grey.
+
+THE BUTTON CHAIN, checked stage by stage (`walkback.py`, `params.py`, runtime `PRINT`):
+871 (multiply 0.2, masked off the buttons) <- 868 (mode 7 switch, opacity program 1 -> 867) <-
+867 (copy 866 over 864 through button mask 862) <- 866 `hsl` (saturation 0.65, luminosity 0.6,
+baked) <- 865 `gradient`, a TWO-stop linear ramp (0.002: 0.439 0.325 0.176 dark brown; 1.0:
+0.933 0.686 0.361 pale gold) <- 320. The hsl reproduces our output from its input exactly, and
+on our own ramp the export's gold is index ~0.70 (our puff-level 0.68 gives 0.880 0.671 0.398).
+320 under the buttons is 0.36, flat: 320 / 309 / 301 / 276 are a switch stack of tuft fields
+(mean 0.499, the button sitting in the tuft PIT), and every variant 307 / 312 / 319 has the pit.
+The height output carries a raised dome at the buttons (0.41 over a 0.30 rim, ours and export
+alike) that the 320 stack does not.
+
+NOT promoted, nothing changed in the renderer. Open, in order: why 865 sees the pit floor
+(0.36) where the export's colour needs ~0.70 -- a switch selection, an edge, or a dome the colour
+lane should share with the height; then re-measure `quadrant` with the buttons right, since the
+off-button blue cost is 0.02. A scan of the cone for flat ~0.7 fields under the buttons finds
+dozens (365-507 family at 0.66, 411-486 at 0.605), so a value match will not name the record.
