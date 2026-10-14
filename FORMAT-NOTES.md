@@ -65046,3 +65046,26 @@ alone: Bricks 004 / 005 ch1 / ch2 dc -0.021..-0.031. Every refusal is a small le
 faces a little darker) beside a hue the pictures say is now right. Not promoted -- the per-row
 ratchet is the promotion rule, and overriding it is the owner's call. SPEC 13 hsl row names the
 arms. render2 19/19.
+
+ADDENDUM, same day -- `quadrant` + `twoway` ON TOP OF the two hsl arms (`ng_full_quad.log` against
+`ng_full.log`, `ratchet_full_quad.log`): CHESTERFIELD NO LONGER BLOCKS THE TREE WALK.
+
+    pack           corr              band              |dc|
+    Chesterfield   +0.946 -> +0.956   0.928 -> 0.926    0.016 -> 0.004
+    Bricks         +0.636 -> +0.633   1.065 -> 0.881    0.032 -> 0.009
+    Sandy          +0.140 -> +0.191   1.397 -> 1.308    0.033 -> 0.028
+    RoofTiles      +0.569 -> +0.533   0.776 -> 0.880    0.036 -> 0.025
+    Auras          identical
+
+Chesterfield basecolor corr 0.886 / 0.987 / 0.917 -> 0.912 / 0.995 / 0.962, dc -0.067 / -0.009 /
+-0.020 -> -0.009 / -0.006 / -0.006, roughness +0.915 -> +0.938 (dc -0.060 -> +0.016). Bricks
+roughness bands 3.5-4.4 -> 1.05-1.44 and dc -0.12..-0.39 -> -0.03..+0.02 on all five graphs.
+RoofTiles' loss is basecolor ch1 / ch2 corr against the `old` export (moss and peel at unrecorded
+inputs; against `clear` the tree walk was FOR its colour, "RoofTiles' basecolor" above).
+
+THE RATCHET'S 12 ROWS ARE ALL BRICKS: height dc 002 / 003 / 004 / 005 (+0.029..+0.045), 003
+basecolor corr x3 (ch0 0.33-0.34), 003 height band 1.18 and dc +0.029, 004 normal ch2 band 1.20,
+and the hsl arms' own small basecolor dc (002 ch2, 004 ch1 / ch2, -0.013..-0.016). The four
+Chesterfield rows that refused `quadrant` on 10-10 are gone: what read as "record 333" was the
+buttons' contrast, and with the buttons right the tree walk is worth +0.045 on Chesterfield's blue.
+Next: Bricks' height dc under the tree (one sign, four graphs).
