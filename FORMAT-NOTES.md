@@ -64971,3 +64971,29 @@ NOT promoted, nothing changed in the renderer. Open, in order: why 865 sees the 
 lane should share with the height; then re-measure `quadrant` with the buttons right, since the
 off-button blue cost is 0.02. A scan of the cone for flat ~0.7 fields under the buttons finds
 dozens (365-507 family at 0.66, 411-486 at 0.605), so a value match will not name the record.
+
+ADDENDUM, same day -- 320 is a CURVATURE ladder, and neither its size nor its sign fixes the buttons:
+
+  - 320 / 309 / 301 / 293 / 285 / 276 are mode-7 switches on `$sizelog2.x < k` (k = 12 .. 7):
+    the `$sizelog2` ladder of the Bricks grout entry. Each rung is `addsub` at 0.5 of a normal
+    channel (121 -> shuffle 122 / 123) and its levels-inverted copy (154 / 125) shifted by
+    `-1/$size` -- 0.5 + g(p) - g(p - d), a one-texel derivative. 119 (the height) carries the
+    button as a flat 0.36 plateau inside a 0.27 rim, so at the buttons only the coarse rungs
+    speak, and they see the tuft pit: concave, low, dark gold.
+  - THE FINE RUNGS READ `$size` 16384 / 32768 at a 2048 render (126: offset -3.05e-5, 201 / 303:
+    -6.1e-5), the Bricks "curvature step is one declared texel" case: 1/8-1/16 of a pixel, sd
+    0.0013-0.0026, dead. `graph.maxsize` revives them and helps Chesterfield a little (native:
+    basecolor ch2 +0.895 -> +0.900 at 4096, +0.911 at 2048, bands up, no other row moves) but
+    the button colour does not move (0.786 0.553 0.250 -> 0.788 0.555 0.254).
+  - OFFSET DIRECTION, tested by negating every transformation offset under 0.01 (83 records,
+    `NEGOFF` in `sheet333.py`, 384-px pairs): the buttons LAND -- 0.865 0.657 0.390 against the
+    export's 0.897 0.665 0.369 -- and the puffs invert (dark centres; `negs_cmp.png`): basecolor
+    corr 0.911 / 0.989 / 0.911 -> 0.286 / 0.927 / 0.636, roughness 0.906 -> 0.869. x-only and
+    y-only flips each give half the button shift and half the damage (0.646 / 0.964 / 0.805).
+    Refuted as a global reading: the puff lane (860 <- 330 pixelprocessor <- 322 <- 320) reads
+    the same curvature and needs today's sign. A sign fitted to the buttons alone would be a fit.
+
+So the button index is still open; what is now known is that the button wants the SIGN-FLIPPED
+curvature and the puffs today's, from one 320. Next candidates: whether 330's pixel processor or
+865 reads 320 through something that differs between the two lanes, and whether the export's
+buttons are drawn by a lane the switch stack does not select at 2048.
