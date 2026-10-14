@@ -65142,3 +65142,36 @@ What this does to the tree walk, re-measured on the new defaults (`ASSUME=fx.sub
 fx.tree.gate=twoway`, `ratchet_tree.log`): 9 refused rows, all Bricks, the 12 of "quadrant +
 twoway on top of the hsl arms" less the three hsl dc rows -- height dc 002-005 (+0.029..+0.045),
 003 basecolor corr x3, 003 height band 1.18, 004 normal ch2 band 1.20. Not promoted.
+
+## The tree walk promoted: `fx.subdivide = quadrant` + `fx.tree.gate = twoway` (2026-10-14)
+
+The owner's call, on the hsl defaults above. Every Quadrant record except the White Noise class
+is drawn as the nesting it states; only a gate carrying both children is consumed as a child
+gate. `flat` / `consume` are the arms.
+
+Native, every pack at its export size (flat -> tree, corr / band / |dc|):
+
+    Chesterfield     +0.946 0.928 0.016  ->  +0.956 0.926 0.004
+    Auras            +0.877 0.991 0.004  ->  unchanged
+    Bricks           +0.636 1.065 0.032  ->  +0.633 0.881 0.009
+    RoofTiles        +0.569 0.776 0.036  ->  +0.533 0.880 0.025
+    SandyStonePath   +0.140 1.397 0.033  ->  +0.191 1.308 0.028
+
+Bricks roughness 002-005 dc -0.31..-0.40 -> -0.033..+0.020, bands 3.5-4.4 -> 1.05-1.44;
+Chesterfield basecolor blue +0.917 -> +0.962. By eye (`hslpromote_1014/sheets_tree`): Bricks'
+layout and edges unchanged, the heights lighter and smoother than the export's, its dark
+cloudy mottle missing -- the scatter families of "Bricks height dc under the tree". RoofTiles'
+corr loss is against the 'old' export's moss; the picture gains the export's peeled-paint bands
+and darker grain the flat walk never drew. Tile scale there was already ~2x the export's on
+10-10 (`sheets_1010/roof`) and is unchanged.
+
+Re-takes, old values in comments: GUARD_TABLE Bricks 002 / 003 / 004 / 005 height, 003
+basecolor ch0-2, 004 normal ch2 (nine rows: height dc +0.029..+0.045, 003 basecolor corr
+0.33-0.57, 003 height band 1.18, 004 normal ch2 band 1.20). HEALTH_CENSUS: eight rows leave
+(Bricks 002 basecolor ch2 band, 002 roughness band, 003-005 roughness dc, Chesterfield basecolor
+ch0 / ch2 dc and roughness dc), Bricks 002-005 height dc enter. COMPANION_TABLE re-taken whole:
+tilt and low_band move toward the export (002 low_band 1.12 -> 0.92), 003 mortar lands, tile
+level moves away on all four graphs (+0.02..+0.04) -- the same height lift, seen per tile.
+
+Open, now on the default path: the height lift and its missing mottle (2886/2889/3048/3051,
+3126); `bit18 + fx.hurst = exp2` remains the measured trade ("combine x hurst under the tree").

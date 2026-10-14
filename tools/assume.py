@@ -578,8 +578,11 @@ QUESTIONS = {
     # -- a root offset, bare Quadrants, one leaf with an opacity program; the flat arm
     # draws it as a constant), the flat walk for every other Quadrant record.
     # `quadrant`: the tree walk for every Quadrant record EXCEPT the White Noise class
-    # (the complement of `noise`).
-    "fx.subdivide": ("flat", "noise", "quadrant", "tree"),
+    # (the complement of `noise`). `quadrant` IS THE DEFAULT since 2026-10-14 (owner's call,
+    # with `fx.tree.gate = twoway`): Chesterfield +0.946 -> +0.956, Bricks roughness bands
+    # 3.5-4.4 -> 1.05-1.44, Sandy +0.140 -> +0.191; nine Bricks rows re-taken, height dc
+    # among them. FORMAT-NOTES.md, "the tree walk promoted".
+    "fx.subdivide": ("quadrant", "flat", "noise", "tree"),
     # The two draw-model questions the tree arm leaves open. `branchoffset` offsets a cell's
     # own pattern and its children; whether its unit is the canvas or the cell's region is
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).
@@ -613,7 +616,8 @@ QUESTIONS = {
     # side for a predicate to pick, and the corpus says that is the normal shape -- of
     # 27,333 `0x89`/`0x99` nodes 27,037 (98.92%) carry a TRUE child only, 289 (1.06%, 27
     # files) carry both. Inert on 331 and 333, whose gates the tree walk never consumes.
-    "fx.tree.gate": ("consume", "twoway"),
+    # `twoway` IS THE DEFAULT since 2026-10-14, with `fx.subdivide = quadrant`.
+    "fx.tree.gate": ("twoway", "consume"),
     # A DEPTH-0 TREE CELL WHOSE EMISSIONS WALK AN INTEGER LATTICE IS DRAWN IN LATTICE-CELL
     # UNITS (`fx._cell`'s test, on the tree path it declines). Bricks 3030: 841 integer
     # offsets that the canvas reading wraps onto one point of the torus. See `fxtree._emit`.

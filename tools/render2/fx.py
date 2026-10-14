@@ -455,7 +455,7 @@ def emissions(rec, run, slots, cache=None):
     # which `splat` draws as grids. Everything above this line is shared: the same chain,
     # the same table, the same seeding, the same answer about whether the table batches.
     # See `fxtree` for what is established and what the arm leaves open.
-    how = assume.assumed("fx.subdivide", "flat")
+    how = assume.assumed("fx.subdivide", "quadrant")
     if how == "tree" or (how == "noise") == white_noise_record(rec, table) and how in ("noise", "quadrant"):
         return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     # A POINTER-CELL LIST AT THE ROOT selects a nesting depth under `fx.pointercell =

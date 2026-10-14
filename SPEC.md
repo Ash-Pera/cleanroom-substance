@@ -1686,12 +1686,15 @@ fault upstream of 10055", and "Quadrant subdivision lands in render2"):
   cell's outputs name distinct children — 244 of 23,462 subdividing records, none in a
   scored pack — so it needs a specimen pack with an export.
 
-`fx.subdivide` chooses who draws the tree: `flat` (default: every entry once at full canvas,
-cells read as links), `noise` (the 16-px `rand(1)` White Noise class), `quadrant` (every other
-subdividing record) and `tree` (both; `noise` and `quadrant` partition it). A chain opening a
-`0x9`/`0x49` pointer-cell list is drawn by the tree under `fx.pointercell = switch` regardless.
-`noise` and `tree` are refused; `quadrant` waits on the gain at depth (FORMAT-NOTES.md,
-"`fx.subdivide` re-measured whole").
+`fx.subdivide` chooses who draws the tree: `quadrant` (default since 2026-10-14: every
+subdividing record except the White Noise class, with `fx.tree.gate = twoway` -- only a gate
+carrying both children is consumed as a child gate), `flat` (every entry once at full canvas,
+cells read as links), `noise` (the 16-px `rand(1)` White Noise class) and `tree` (both; `noise`
+and `quadrant` partition it). A chain opening a `0x9`/`0x49` pointer-cell list is drawn by the
+tree under `fx.pointercell = switch` regardless. `noise` and `tree` are refused. Under
+`quadrant` Bricks' height reads ~0.03-0.045 high: two scatter families (strip trees, bubbles)
+thin out under the tree and no global combine reading restores them (FORMAT-NOTES.md,
+"`fx.subdivide` re-measured whole"; "the tree walk promoted").
 
 ### 13.8 What the file does not state
 

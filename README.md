@@ -178,14 +178,14 @@ pixel correlation; then the per-row ratchet (`test_render2_reference_agreement_d
 52 entries × 3 grids, a frozen health census). Readings the file does not settle are
 `assume.QUESTIONS` arms; their defaults, and why, are `SPEC.md` §13.9.
 
-Current scores, every pack at its export size (`nativeguard.py`, mean over rows; 2026-10-14):
+Current scores, every pack at its export size (`nativeguard.py`, mean over rows; 2026-10-14, tree walk):
 
     pack             size   rows    corr     band    |dc|
-    Chesterfield     2048    10    +0.946    0.928   0.016
+    Chesterfield     2048    10    +0.956    0.926   0.004
     Auras             512     3    +0.877    0.991   0.004
-    Bricks           1024    48    +0.636    1.065   0.032
-    RoofTiles        2048     9    +0.569    0.776   0.036
-    SandyStonePath   2048    20    +0.140    1.397   0.033
+    Bricks           1024    48    +0.633    0.881   0.009
+    RoofTiles        2048     9    +0.533    0.880   0.025
+    SandyStonePath   2048    20    +0.191    1.308   0.028
 
 What lands: every pack's tile layout, mortar geometry, heights and normals sit on the export;
 Chesterfield is above +0.89 on every row (its `metallic` to MAE 0.0004) and its height and AO
@@ -196,9 +196,11 @@ gaussian`, 2026-09-28).
 
 What is visibly wrong, each with its section in `FORMAT-NOTES.md`:
 
-  - **Bricks roughness on 002 / 004 / 005 is far too dark** (dc −0.31 to −0.40). The tree
-    walk (`fx.subdivide = quadrant`) fixes the level and removes a faint canvas-sized ring from
-    graphs 003–005, but costs colour elsewhere (Chesterfield's blue), so it is not the default.
+  - **Bricks height reads 0.03–0.045 high on 002–005, and lacks the export's dark cloudy
+    mottle.** The tree walk (`fx.subdivide = quadrant`, default since 2026-10-14) put Bricks
+    roughness on the export (dc −0.31..−0.40 → −0.03..+0.02) and Chesterfield's blue with it,
+    but two scatter families (the strip trees, the bubbles) thin out under it and no global
+    combine reading brings them back.
   - **Bricks' round-tile mortar joints** were 0.75 of the export's width and half its depth;
     under `dirmotionblur.extent = floor` (a blur reaches at least one tag texel, default since
     2026-10-10) they sit on it, f/f 0.299 / 0.296 against 0.278 / 0.293, width 8 / 8. The

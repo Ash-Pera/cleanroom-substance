@@ -286,8 +286,8 @@ def cells_of(rec, table, run=None, slots=None):
                 # nodes, 27,037 (98.92%) carry a TRUE child only and 289 (1.06%, in 27
                 # files) carry both. Under `twoway` those 98.92% stay in the chain walk
                 # and keep terminating it, and the 1.06% that really are two-way still
-                # read as child gates. Default `consume` is the reading as it was.
-                if assume.assumed("fx.tree.gate", "consume") == "consume" or _two_way(rec, target):
+                # read as child gates. Default `twoway` since 2026-10-14; `consume` is the reading as it was.
+                if assume.assumed("fx.tree.gate", "twoway") == "consume" or _two_way(rec, target):
                     target = gated(rec, target, run, slots, consumed)
                 if target is None:
                     kids.append(None)

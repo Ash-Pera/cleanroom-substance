@@ -1844,11 +1844,16 @@ GUARD_TABLE = {
         was=(0.63, 256),
         companion=('bricks_tile_octaves', 0.63),
     ),
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): the strip-tree and bubble scatters thin out under the
+    # tree and the height reads high; no global combine restores them (FORMAT-NOTES.md, "Bricks
+    # height dc under the tree"). Was: 128 (+0.4865, 0.9002, +0.0169), 256 (+0.4906, 0.9511, +0.0169), 512 (+0.4915, 1.0023, +0.0169).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '002/height', 0): Entry(
         at={
-            128: (+0.4865, 0.9002, +0.0169),
-            256: (+0.4906, 0.9511, +0.0169),
-            512: (+0.4915, 1.0023, +0.0169),
+            128: (+0.5309, 1.0881, +0.0339),
+            256: (+0.5345, 1.1113, +0.0339),
+            512: (+0.5352, 1.1182, +0.0339),
         },
         was=(0.57, 256),
         companion=('bricks_tile_octaves', 0.57),
@@ -1898,38 +1903,55 @@ GUARD_TABLE = {
         was=(0.91, 256),
         companion=('bricks_tile_octaves', 0.91),
     ),
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): 003's stone loses corr to the scatters the tree
+    # thins, as its height does. Was: 128 (+0.3827, 0.5120, +0.0076), 256 (+0.3894, 0.5029, +0.0076), 512 (+0.3909, 0.4989, +0.0076).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0): Entry(
         at={
-            128: (+0.3827, 0.5120, +0.0076),
-            256: (+0.3894, 0.5029, +0.0076),
-            512: (+0.3909, 0.4989, +0.0076),
+            128: (+0.3338, 0.6470, +0.0059),
+            256: (+0.3411, 0.6396, +0.0059),
+            512: (+0.3428, 0.6368, +0.0059),
         },
         was=(0.72, 256),
         companion=('bricks_tile_octaves', 0.72),
     ),
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): 003's stone loses corr to the scatters the tree
+    # thins, as its height does. Was: 128 (+0.5950, 0.4751, -0.0017), 256 (+0.6007, 0.4690, -0.0017), 512 (+0.6020, 0.4661, -0.0017).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1): Entry(
         at={
-            128: (+0.5950, 0.4751, -0.0017),
-            256: (+0.6007, 0.4690, -0.0017),
-            512: (+0.6020, 0.4661, -0.0017),
+            128: (+0.5642, 0.5979, +0.0017),
+            256: (+0.5702, 0.5934, +0.0016),
+            512: (+0.5716, 0.5915, +0.0016),
         },
         was=(0.8, 256),
         companion=('bricks_tile_octaves', 0.8),
     ),
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): 003's stone loses corr to the scatters the tree
+    # thins, as its height does. Was: 128 (+0.5256, 0.4237, -0.0061), 256 (+0.5321, 0.4171, -0.0061), 512 (+0.5336, 0.4142, -0.0061).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2): Entry(
         at={
-            128: (+0.5256, 0.4237, -0.0061),
-            256: (+0.5321, 0.4171, -0.0061),
-            512: (+0.5336, 0.4142, -0.0061),
+            128: (+0.4963, 0.5643, -0.0000),
+            256: (+0.5031, 0.5596, -0.0000),
+            512: (+0.5046, 0.5577, -0.0000),
         },
         was=(0.76, 256),
         companion=('bricks_tile_octaves', 0.76),
     ),
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): the strip-tree and bubble scatters thin out under the
+    # tree and the height reads high; no global combine restores them (FORMAT-NOTES.md, "Bricks
+    # height dc under the tree"). Was: 128 (+0.4983, 1.0527, +0.0069), 256 (+0.5038, 1.0560, +0.0069), 512 (+0.5050, 1.0563, +0.0069).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '003/height', 0): Entry(
         at={
-            128: (+0.4983, 1.0527, +0.0069),
-            256: (+0.5038, 1.0560, +0.0069),
-            512: (+0.5050, 1.0563, +0.0069),
+            128: (+0.5510, 1.1707, +0.0295),
+            256: (+0.5553, 1.1784, +0.0294),
+            512: (+0.5563, 1.1798, +0.0294),
         },
         was=(0.71, 256),
         companion=('bricks_tile_octaves', 0.71),
@@ -2061,11 +2083,16 @@ GUARD_TABLE = {
     # ~0.010 at each grid; approved as a floor decision by the owner, 2026-09-25. Was:
     # 128 (+0.4175, 1.1004, -0.0067), 256 (+0.4233, 1.1169, -0.0067), 512 (+0.4247, 1.1424,
     # -0.0068). FORMAT-NOTES.md, "`tag` promoted".
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): the strip-tree and bubble scatters thin out under the
+    # tree and the height reads high; no global combine restores them (FORMAT-NOTES.md, "Bricks
+    # height dc under the tree"). Was: 128 (+0.4276, 1.1569, -0.0120), 256 (+0.4331, 1.1555, -0.0120), 512 (+0.4344, 1.1655, -0.0121).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '004/height', 0): Entry(
         at={
-            128: (+0.4276, 1.1569, -0.0120),
-            256: (+0.4331, 1.1555, -0.0120),
-            512: (+0.4344, 1.1655, -0.0121),
+            128: (+0.5384, 1.1434, +0.0348),
+            256: (+0.5438, 1.1551, +0.0348),
+            512: (+0.5449, 1.1579, +0.0348),
         },
         was=(0.44, 256),
         companion=('bricks_tile_octaves', 0.44),
@@ -2092,11 +2119,14 @@ GUARD_TABLE = {
     # band 1.46 -> 0.99 at 256, corr -0.025 (adverse at every grid).
     # Was: 128 (+0.8227, 1.2160, -0.0019), 256 (+0.8197, 1.4607, -0.0019), 512 (+0.8188,
     # 1.5876, -0.0019). FORMAT-NOTES.md, "`floor` promoted".
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): the band rises with the finer relief the tree draws. Was: 128 (+0.7979, 0.9835, -0.0011), 256 (+0.7950, 0.9856, -0.0011), 512 (+0.7939, 0.9839, -0.0011).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): Entry(
         at={
-            128: (+0.7979, 0.9835, -0.0011),
-            256: (+0.7950, 0.9856, -0.0011),
-            512: (+0.7939, 0.9839, -0.0011),
+            128: (+0.7970, 1.2007, -0.0027),
+            256: (+0.7942, 1.2055, -0.0027),
+            512: (+0.7933, 1.1996, -0.0026),
         },
         was=(0.76, 256),
         companion=('bricks_tile_octaves', 0.76),
@@ -2156,11 +2186,16 @@ GUARD_TABLE = {
         },
         was=(0.2, 256),
     ),
+    # RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+    # (2026-10-14, owner's call): the strip-tree and bubble scatters thin out under the
+    # tree and the height reads high; no global combine restores them (FORMAT-NOTES.md, "Bricks
+    # height dc under the tree"). Was: 128 (+0.4515, 0.9133, +0.0257), 256 (+0.4636, 0.9598, +0.0257), 512 (+0.4665, 0.9968, +0.0256).
+    # FORMAT-NOTES.md, "the tree walk promoted".
     ('Kutejnikov__Bricks_and_tiles', '005/height', 0): Entry(
         at={
-            128: (+0.4515, 0.9133, +0.0257),
-            256: (+0.4636, 0.9598, +0.0257),
-            512: (+0.4665, 0.9968, +0.0256),
+            128: (+0.4692, 1.0790, +0.0453),
+            256: (+0.4804, 1.1013, +0.0453),
+            512: (+0.4830, 1.1077, +0.0453),
         },
         was=(0.54, 256),
         companion=('bricks_tile_octaves', 0.54),
@@ -2322,18 +2357,18 @@ HEALTH_CENSUS = {
     # Bricks 002/basecolor ch0 band, ch1 band and ch1 dc left with `emboss.intensity = fields`
     # (2026-10-11). FORMAT-NOTES.md, "RoofTiles' basecolor".
     # Enters with `dirmotionblur.extent = floor` (2026-10-10); FORMAT-NOTES.md, "`floor` promoted".
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
     # Bricks 002/004/005 basecolor ch0 dc and Chesterfield basecolor ch2 band left, and Chesterfield
     # basecolor ch2 dc entered, with `hsl.saturation` / `hsl.luminosity = full` (2026-10-14).
     # FORMAT-NOTES.md, "the buttons are hsl".
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0), 'dc'),
+    # Bricks 002 basecolor ch2 band, 002 roughness band, 003 / 004 / 005 roughness dc and
+    # Chesterfield basecolor ch0 / ch2 dc and roughness dc left, and Bricks 002-005 height dc
+    # entered, with `fx.subdivide = quadrant` + `fx.tree.gate = twoway` (2026-10-14).
+    # FORMAT-NOTES.md, "the tree walk promoted".
+    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'dc'),
 }
 
 #: Causes for health-bar failures whose mechanism IS traced. A `Cause` pins its quantity
@@ -2753,11 +2788,20 @@ COMPANION_INSTRUMENTS = {
     "bricks_tile_octaves": "test_bricks_per_tile_and_low_octave_instruments_do_not_regress",
 }
 COMPANION_MARGIN = {"tilt": 0.02, "tile_level": 0.02, "mortar_level": 0.03, "low_band": 0.15}
+# RE-TAKEN when `fx.subdivide = quadrant` + `fx.tree.gate = twoway` became the default
+# (2026-10-14, owner's call): tilt and low_band move toward the export (002 low_band 1.12 ->
+# 0.92, 004 1.12 -> 1.07) and 003's mortar lands (0.429 -> 0.452 vs 0.452); tile_level moves
+# away on all four (+0.02..+0.04: the height lift of "the tree walk promoted") and 004's
+# mortar with it. Was:
+#       "002": {"tilt": (0.2063, 0.2064), "tile_level": (0.6589, 0.6432), "mortar_level": (0.4905, 0.4713), "low_band": (1.1193, 1.0)},
+#       "003": {"tilt": (0.1518, 0.1689), "tile_level": (0.6180, 0.5796), "mortar_level": (0.4289, 0.4516), "low_band": (1.2929, 1.0)},
+#       "004": {"tilt": (0.2045, 0.2234), "tile_level": (0.6335, 0.6313), "mortar_level": (0.3818, 0.3794), "low_band": (1.1223, 1.0)},
+#       "005": {"tilt": (0.2199, 0.2203), "tile_level": (0.6560, 0.6273), "mortar_level": (0.4186, 0.4006), "low_band": (0.8824, 1.0)},
 COMPANION_TABLE = {
-    "002": {"tilt": (0.2063, 0.2064), "tile_level": (0.6589, 0.6432), "mortar_level": (0.4905, 0.4713), "low_band": (1.1193, 1.0)},
-    "003": {"tilt": (0.1518, 0.1689), "tile_level": (0.6180, 0.5796), "mortar_level": (0.4289, 0.4516), "low_band": (1.2929, 1.0)},
-    "004": {"tilt": (0.2045, 0.2234), "tile_level": (0.6335, 0.6313), "mortar_level": (0.3818, 0.3794), "low_band": (1.1223, 1.0)},
-    "005": {"tilt": (0.2199, 0.2203), "tile_level": (0.6560, 0.6273), "mortar_level": (0.4186, 0.4006), "low_band": (0.8824, 1.0)},
+    "002": {"tilt": (0.2071, 0.2064), "tile_level": (0.6865, 0.6432), "mortar_level": (0.4947, 0.4713), "low_band": (0.9181, 1.0)},
+    "003": {"tilt": (0.1707, 0.1689), "tile_level": (0.6424, 0.5796), "mortar_level": (0.4521, 0.4516), "low_band": (1.2895, 1.0)},
+    "004": {"tilt": (0.2212, 0.2234), "tile_level": (0.6724, 0.6313), "mortar_level": (0.4113, 0.3794), "low_band": (1.0673, 1.0)},
+    "005": {"tilt": (0.2230, 0.2203), "tile_level": (0.6801, 0.6273), "mortar_level": (0.4192, 0.4006), "low_band": (0.9266, 1.0)},
 }
 
 
