@@ -64997,3 +64997,52 @@ So the button index is still open; what is now known is that the button wants th
 curvature and the puffs today's, from one 320. Next candidates: whether 330's pixel processor or
 865 reads 320 through something that differs between the two lanes, and whether the export's
 buttons are drawn by a lane the switch stack does not select at 2048.
+
+## The buttons are `hsl`: its SATURATION and LUMINOSITY sliders read as offsets of 2(x - 0.5), as the hue slider is -- Chesterfield's buttons land, Bricks 004's emission becomes exact, Bricks 004 / 005 turn the export's grey; the ratchet refuses 6 small dc / band rows, so the arms stand default-off for the owner
+
+Measured 2026-10-14 at `557c160` (`~/Documents/cleanroom-substance-runs/hsl_1014/`; numbers below
+from ONE session window, default and arm side by side).
+
+THE BUTTON LANE, finished. 330 (the puff lane's pixel processor) is an AUTO-LEVELS --
+(lum - min) / (max - min) with 329 a 2 x 2 max pyramid supplying both -- so the puffs never see
+320's absolute level; only the buttons do (865 <- 320 raw). Applying candidate hsl readings to
+our own unchanged 865 output under the button mask, against the export's 0.897 0.665 0.369:
+
+    saturation   luminosity      result                  max err
+    x 2s         + (l - .5)      0.792 0.559 0.252       0.117    (today)
+    x 2s         + 2(l - .5)     0.836 0.651 0.409       0.061
+    + 2(s - .5)  + (l - .5)      0.873 0.570 0.171       0.198
+    + 2(s - .5)  + 2(l - .5)     0.900 0.660 0.345       0.024
+    (+ (s - .5), and x 2l, all 0.05-0.23 off)
+
+So the curvature ladder was never the fault: 320's 0.36 is what the export indexes too. New arms
+`hsl.saturation = (scale, full)`, `hsl.luminosity = (half, full)`; `full` is the offset reading,
+the same shape as `hsl.hue = twoturn` (a slider spanning -1..+1 about a neutral 0.5).
+
+MEASURED, every pack native (`ng_def.log` / `ng_full.log`, split in `ngB_*` / `ngC_*`):
+
+    pack / row                         default                  both full                lum only
+    Bricks 004/emission corr           1.000 0.997 0.993        1.000 1.000 1.000        1.000 1.000 1.000
+                        band           0.994 0.696 0.644        1.006 1.025 1.026        0.997 1.053 1.065
+    Chesterfield basecolor corr        0.901 0.991 0.895        0.886 0.987 0.917        0.881 0.992 0.939
+                           band        0.567 0.551 0.213        0.832 0.959 0.735        0.684 0.832 1.026
+                           dc          -.096 +.010 -.003        -.067 -.009 -.020        -.094 +.015 +.004
+    pack means: Auras identical; Bricks band 1.052 -> 1.065, |dc| .033 -> .032; RoofTiles
+    +0.570 -> +0.569; Sandy |dc| .034 -> .033.
+
+THE EMISSION IS THE SEED-FREE WITNESS: Bricks 004's emission is a pure colour chain through an hsl,
+and under `luminosity = full` it matches the export to three decimals on all three channels,
+bands at 1. Saturation alone does not move it.
+
+LOOKED (`bc_def_lum_full.png`, `bricks_p3.png`, `bricks_p5.png`: ours default | ours full |
+export): Chesterfield's buttons go dull orange -> the export's pale gold, and the leather from
+dull to the export's saturated red; under luminosity alone the buttons wash out to beige, so
+the picture wants BOTH arms though ch2 corr prefers lum alone (0.939 vs 0.917). Bricks 004 and
+005 basecolor go from a warm pink-brown to the neutral grey stone the export is.
+
+THE RATCHET REFUSES, both arms: Bricks 002/basecolor ch2 dc -0.018, 004/basecolor ch0 band
+0.40-0.46, 004 ch1 / ch2 dc -0.015, 005 ch1 dc -0.011, Chesterfield basecolor ch2 dc -0.020; lum
+alone: Bricks 004 / 005 ch1 / ch2 dc -0.021..-0.031. Every refusal is a small level shift (the
+faces a little darker) beside a hue the pictures say is now right. Not promoted -- the per-row
+ratchet is the promotion rule, and overriding it is the owner's call. SPEC 13 hsl row names the
+arms. render2 19/19.
